@@ -56,6 +56,7 @@ You can register:
 - `ModServerExtension`: server-side management hooks and client command handling.
 
 For AI-specific examples, see [Native AI Hooks](native-ai-hooks.md).
+For the full exported Rust API surface, see [Native Mod API Reference](native-mod-api-reference.md).
 For save-slot data owned by your mod, see [Mod Save Data](mod-save-data.md).
 
 ## Reading Current Save Data

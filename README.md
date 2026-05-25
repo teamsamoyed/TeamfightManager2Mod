@@ -49,6 +49,7 @@ Native mods need the Mod SDK and should be rebuilt for the game version they tar
 - [Assets and Sprite Sheets](docs/assets-and-sprite-sheets.md)
 - [Asset Overrides and i18n](docs/asset-overrides-and-i18n.md)
 - [Native Rust Mods](docs/native-rust-mods.md)
+- [Native Mod API Reference](docs/native-mod-api-reference.md)
 - [Native AI Hooks](docs/native-ai-hooks.md)
 - [Mod Save Data](docs/mod-save-data.md)
 - [Workshop Upload](docs/workshop-upload.md)
