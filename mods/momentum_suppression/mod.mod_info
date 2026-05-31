@@ -1,0 +1,13 @@
+{
+  "name": "Momentum Suppression",
+  "author": "kanto1384",
+  "version": "0.1.0",
+  "description": "Adds a per-set momentum bonus: the first team to reach 5 total kills gains a temporary combat buff until that set ends.",
+  "last_updated": "2026-05-31",
+  "dependencies": [
+    {
+      "mod_id": "base",
+      "version": ">=0.1.0"
+    }
+  ]
+}
