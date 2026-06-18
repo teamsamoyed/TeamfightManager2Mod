@@ -6,7 +6,7 @@ Start with [Data-Only Champions](../data-champion.md) for a small working exampl
 
 ## Pages
 
-- [Champion File](champion-file.md): top-level `.data_champion` fields, stats, icons, and required action slots.
+- [Champion File](champion-file.md): top-level `.data_champion` fields, stats, icons, required action slots, and existing champion reworks.
 - [Actions](actions.md): `attack`, `skill`, `skill2`, and `ult` action schema.
 - [Effects](effects.md): every `effect.type` value and its JSON shape.
 - [Buffs and Stats](buffs-and-stats.md): `stat`, `growth`, `buff_state`, and buff duration schema.

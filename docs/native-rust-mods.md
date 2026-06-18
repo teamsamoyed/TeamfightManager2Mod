@@ -37,6 +37,7 @@ Most native mods create a `ModRegistration`, add content to it, and return it:
 fn init(_ctx: &GameCtx) -> ModRegistration {
     let mut reg = ModRegistration::new("my_mod");
     reg.add_champion(MyChampion);
+    reg.replace_champion(MyFighterRework);
     reg.add_item(MyItem::default());
     reg.add_draft_score_hook(MyDraftScoreHook);
     reg.add_player_input_ai(MyPlayerInputAi::default());
@@ -49,6 +50,7 @@ fn init(_ctx: &GameCtx) -> ModRegistration {
 You can register:
 
 - `ModChampionInfo`: a champion with custom runtime logic.
+- `ModRegistration::replace_champion`: registers a `ModChampionInfo` as an existing champion rework while keeping save and ban/pick references stable.
 - `ModItemInfo`: an item with metadata and runtime callbacks.
 - `ModDraftScoreHook`: ban/pick AI score adjustment hooks.
 - `ModPlayerInputAi`: final player input replacement hooks.
@@ -164,6 +166,37 @@ impl ModChampionInfo for MyChampion {
 ```
 
 Each action can return a `ModEffect`. The effect uses `GameCtx` to read game state and apply damage, healing, buffs, crowd control, or debug drawing.
+
+## Reworking an Existing Champion
+
+Use `replace_champion` when a native Rust mod should change an existing base-game champion instead of adding a new one:
+
+```rust
+fn init(_ctx: &GameCtx) -> ModRegistration {
+    let mut reg = ModRegistration::new("my_mod");
+    reg.replace_champion(MyFighterRework);
+    reg
+}
+```
+
+The replacement's `ModChampionInfo::id()` must return the exact base champion id:
+
+```rust
+impl ModChampionInfo for MyFighterRework {
+    fn id(&self) -> &str { "fighter" }
+    fn name(&self) -> &str { "fighter" }
+
+    // category, tags, stat, growth, attack, skill, skill2, ult...
+}
+```
+
+The public champion id is not changed. Existing saves, ban/pick references, patch states, and historical data that already refer to that id continue to refer to it. If the id does not exist in the base game, `replace_champion` behaves like `add_champion`.
+
+Native replacements are rebound into loaded saves at runtime, so a save created before the mod was enabled can still use the replacement without a save-schema migration. In multiplayer, the server remains authoritative and the client runtime is rebound from the active mod registry when champion sheets are sent to clients.
+
+If a JSON data champion and a native Rust champion both use the same id, the native Rust runtime takes priority for custom logic. Prefer one owner for each reworked champion to keep behavior easy to reason about.
+
+For names and skill descriptions, return stable i18n keys or existing text keys and merge localized strings through `asset/base/text/champion`. Do not rely on hardcoded player-facing strings for released mods.
 
 ## Action and Effect Example
 

@@ -7,7 +7,7 @@ Most mods start with:
 use mod_api::*;
 ```
 
-The API version described here is `API_VERSION == (0, 7)`. Native DLLs are SDK-version-bound: rebuild the DLL when the game SDK changes.
+The API version described here is `API_VERSION == (0, 8)`. Native DLLs are SDK-version-bound: rebuild the DLL when the game SDK changes.
 
 ## Top-Level Export Map
 
@@ -28,7 +28,7 @@ For large game data structures such as `Team`, `Athlete`, `MatchInfo`, and `Cham
 
 | Item | Signature |
 | --- | --- |
-| `API_VERSION` | `(u32, u32)`, currently `(0, 7)` |
+| `API_VERSION` | `(u32, u32)`, currently `(0, 8)` |
 | `API_VERSION_ENCODED` | `u64` encoded as `major << 32 | minor` |
 | `MOD_ENTRY_SYMBOL` | `"tfm2_mod_entry"` |
 | `MOD_API_VERSION_SYMBOL` | `"tfm2_mod_api_version"` |
@@ -69,6 +69,7 @@ Methods:
 | --- | --- |
 | `new` | `fn new(mod_id: impl Into<String>) -> Self` |
 | `add_champion` | `fn add_champion(&mut self, info: impl ModChampionInfo + 'static)` |
+| `replace_champion` | `fn replace_champion(&mut self, info: impl ModChampionInfo + 'static)` |
 | `add_item` | `fn add_item(&mut self, info: impl ModItemInfo + 'static)` |
 | `add_draft_score_hook` | `fn add_draft_score_hook(&mut self, hook: impl ModDraftScoreHook + 'static)` |
 | `add_player_input_ai` | `fn add_player_input_ai(&mut self, ai: impl ModPlayerInputAi + 'static)` |
@@ -81,9 +82,11 @@ Methods:
 
 Defines one champion.
 
+Use `add_champion` with a new unique id to add a champion. Use `replace_champion` with an existing base champion id to rework that champion while preserving saved champion ids, ban/pick references, and patch references. If `replace_champion` receives an id that is not present in the base game, it behaves like `add_champion`.
+
 | Method | Signature | Default |
 | --- | --- | --- |
-| `id` | `fn id(&self) -> &str` | required |
+| `id` | `fn id(&self) -> &str` | required. For `replace_champion`, this must be the exact base champion id. |
 | `name` | `fn name(&self) -> &str` | `self.id()` |
 | `skill_icon` | `fn skill_icon(&self, skill_index: usize) -> (String, String)` | `skill_icon` sheet and `{id}_{index}` tag |
 | `category` | `fn category(&self) -> ChampionCategory` | required |
@@ -1063,7 +1066,7 @@ These structs are public because the loader and SDK need an ABI boundary. Normal
 - `FrameVtable`
 - `ModServiceVtable`
 
-`FrameVtable` also contains a low-level `debug_text` function pointer. There is no safe `GameCtx::debug_text` wrapper in API version `(0, 7)`.
+`FrameVtable` also contains a low-level `debug_text` function pointer. There is no safe `GameCtx::debug_text` wrapper in API version `(0, 8)`.
 
 ## Related Guides
 

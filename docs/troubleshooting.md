@@ -85,10 +85,22 @@ Check:
 - The file extension is `.data_champion`.
 - The champion has `attack`, `skill`, and `skill2`.
 - Enum values are spelled exactly, such as `Targeting`, `Enemy`, and `BaseAttack`.
-- The champion `id` is unique.
+- For a new champion, the champion `id` is unique. For an existing champion rework, the `id` exactly matches the base champion id.
 - Description keys point to text that has been merged into i18n.
 - If `sprite` points to an animated source, `anim_prefix` is present.
 - If `sprite` points to a PNG, `anim_prefix` is not needed.
+
+## An Existing Champion Rework Does Not Apply
+
+Check:
+
+- The `.data_champion` or `ModChampionInfo::id()` uses the exact base champion id.
+- For JSON reworks, the file extension is `.data_champion` and the mod loads without diagnostics errors.
+- For native Rust reworks, the DLL uses the current SDK and registers the champion with `replace_champion`.
+- You restarted the game after changing data files or rebuilding the DLL.
+- In multiplayer, every player has the same mod enabled and native DLLs were built with a compatible SDK.
+- If both JSON and native Rust register the same id, the native Rust runtime takes priority.
+- Name and description changes are provided through an i18n merge into `asset/base/text/champion`; otherwise the old text may still appear even though gameplay data changed.
 
 ## A Native DLL Does Not Load
 

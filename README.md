@@ -13,6 +13,7 @@ If this is your first mod, start with a data-only champion. You can make one wit
 These are the easiest mods to build and share.
 
 - Add champions with `.data_champion` files.
+- Rework existing champions by reusing their base champion id in a `.data_champion` file.
 - Add custom icons, sprites, UI layouts, and text.
 - Merge new translations into the game's text files.
 - Override existing assets such as sprites or JSON data.
@@ -28,6 +29,7 @@ Database packs are Workshop sharing packages for custom database files. They use
 Native mods are for things that need custom code.
 
 - Add champions with custom simulation logic.
+- Rework existing champions with custom runtime logic through `replace_champion`.
 - Add items with runtime callbacks.
 - Add UI or scene behavior through lifecycle hooks.
 - Add server-side management hooks for save/game-state logic.

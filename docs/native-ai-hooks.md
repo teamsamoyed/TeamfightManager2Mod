@@ -75,6 +75,8 @@ impl ModDraftScoreHook for InvertDraftScoreHook {
 
 `DraftScoreContext` contains draft-side information such as the phase, existing picks and bans, available candidates, difficulty, and whether the game is exploring draft alternatives. The candidate value is the champion index used by the game draft candidate list.
 
+Existing champion reworks keep the base champion id and draft candidate position stable. A ban/pick hook that already scores that candidate continues to see the same candidate value after the champion's gameplay data or runtime logic is replaced.
+
 ## Player Input AI Hooks
 
 Implement `ModPlayerInputAi` when you want to replace the final `Input` selected for a player.
@@ -152,5 +154,6 @@ The helper calls above do not expose internal small-action objects. For example,
 - Rebuild the native DLL whenever the game SDK changes.
 - Use the `Input` type and context helpers as the boundary. Do not depend on internal AI implementation details.
 - Keep hooks small and deterministic. They run inside the match simulation.
+- For multiplayer, all players should use the same enabled native mods and SDK-compatible DLLs so draft scoring and player-input replacement stay deterministic.
 - If a hook panics, the game logs the error and falls back where possible, but the hook should still handle its own edge cases.
 - Use a release-built DLL with the release game package.

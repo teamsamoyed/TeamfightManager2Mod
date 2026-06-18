@@ -110,6 +110,8 @@ Mod dependency version requirements follow semantic versioning. For the special 
 
 Most mods should include a `base` requirement so players get a clear diagnostics message if they try to load the mod on an unsupported game version.
 
+Mods that rework existing champions should set the `base` requirement to the game version whose champion data and SDK behavior they target. For example, a mod that depends on same-id JSON champion reworks or `replace_champion` should require a game version that includes that support, such as `">=0.4.14"`.
+
 Other dependencies are normal mod dependencies. They are also used for load order. When a player enables a mod, installed dependencies are included automatically and loaded first. If a required dependency is missing or its version does not match, the dependent mod is disabled and the game shows a diagnostics message.
 
 Use dependencies for reusable native service mods too. For example, a native DLL consumer that calls a provider's runtime service should declare the provider in `mod.mod_info`:
@@ -187,5 +189,5 @@ For native Rust mods, install the matching Mod SDK next to the uploader if you w
 
 - Use lowercase ASCII folder names: `my_mod`, `new_champions`, `balance_pack`, `league_database_pack`.
 - Keep content ids stable after release. Saves and patches may refer to those ids.
-- Avoid base-game ids and names that are likely to collide with other mods.
-- Prefix new ids with your mod id when it helps readability, such as `my_mod_fire_mage`.
+- Avoid base-game ids and names that are likely to collide with other mods, except when you are intentionally reworking an existing champion by using its exact base id.
+- Prefix new ids with your mod id when it helps readability, such as `my_mod_fire_mage`. Do not prefix the id for an existing champion rework.

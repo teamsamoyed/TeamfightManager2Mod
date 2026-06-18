@@ -46,6 +46,14 @@ Types:
 
 If this file contains invalid JSON, the game disables the mod and shows the error in the diagnostics popup.
 
+## Existing Champion Reworks vs Asset Overrides
+
+Use a same-id `.data_champion` file when you want to change an existing champion's gameplay data. Use `ModRegistration::replace_champion` when you need Rust runtime logic for that existing champion. Those paths keep the champion id stable for saves, ban/pick data, and patch references.
+
+Use `mod.override_info` when you want to replace or merge assets such as text, sprites, UI layouts, or other asset files. An asset override can change what a champion looks like or what text it shows, but it is not the same as registering a gameplay rework.
+
+For existing champion reworks, keep player-facing text in i18n files. Merge changed names and skill descriptions into `asset/base/text/champion` instead of hardcoding display text in champion JSON or native Rust code.
+
 ## i18n Files
 
 i18n files are JSON grouped by language:
