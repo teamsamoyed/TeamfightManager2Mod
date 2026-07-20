@@ -17,6 +17,7 @@ These are the easiest mods to build and share.
 - Add custom icons, sprites, UI layouts, and text.
 - Merge new translations into the game's text files.
 - Override existing assets such as sprites or JSON data.
+- Add optional Ban/Pick portraits without replacing gameplay sprites.
 
 You do not need the Mod SDK for this kind of mod.
 
@@ -50,6 +51,7 @@ Native mods need the Mod SDK and should be rebuilt for the game version they tar
 - [Data Champion Schema](docs/data-champion-schema/index.md)
 - [Assets and Sprite Sheets](docs/assets-and-sprite-sheets.md)
 - [Asset Overrides and i18n](docs/asset-overrides-and-i18n.md)
+- [Ban/Pick Illustration Packs](docs/banpick-illustration-packs.md)
 - [Native Rust Mods](docs/native-rust-mods.md)
 - [Native Mod API Reference](docs/native-mod-api-reference.md)
 - [Native AI Hooks](docs/native-ai-hooks.md)
