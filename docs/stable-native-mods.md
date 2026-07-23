@@ -1,0 +1,118 @@
+# Stable Native Mods (Build Once, Keep Working)
+
+The stable mod API lets you build a native DLL **once** and keep using it across game updates. This is the recommended way to write new native Rust mods.
+
+Looking for a specific function? The [Stable API Reference](stable-api-reference.md) lists every trait, method, value type, and enum with signatures, units, payload schemas, and examples. This page is the getting-started guide.
+
+It differs from the classic native path (`mod-api`) in three ways:
+
+- **No rebuilds after game updates.** The game loads your DLL as long as it does not require a newer API level than the game supports.
+- **Any Rust toolchain.** Stable Rust, any nightly — no pinned compiler, no SDK dependency downloads.
+- **A smaller, contract-based API.** You call game functions through a versioned interface instead of touching internal game types directly. The classic path still exists for mods that need it, but those DLLs must be rebuilt for each game version.
+
+## Getting the SDK
+
+The stable SDK is a folder named `mod-sdk-stable` containing:
+
+- `mod-api-stable/` — the API crate (plain Rust source, no dependencies).
+- `template/` — a ready-to-build mod project.
+- `README.txt` — the short version of this page.
+
+It ships with the game: look for the `mod-sdk-stable` folder in your game install directory, next to `TFM2ModUploader.exe`.
+
+## Your First Stable Mod
+
+1. Copy the `template` folder anywhere and rename it (the folder name becomes your DLL name).
+2. Keep `mod-api-stable` next to it — the template references it as `../mod-api-stable`.
+3. Edit `src/lib.rs`:
+
+```rust
+use mod_api_stable::{declare_stable_mod, LogLevel, StableHost, StableMod};
+
+fn init(host: &StableHost) -> StableMod {
+    host.log(LogLevel::Info, "hello from my stable mod");
+
+    let mut decl = StableMod::new("my_mod_id");
+    // Register content here (see the sections below).
+    decl
+}
+
+declare_stable_mod!(init);
+```
+
+4. Build and install:
+
+```
+cargo build --release
+```
+
+Copy `target/release/<name>.dll` into `mods/<my_mod_id>/` together with a `mod.mod_info` file (same metadata format as every other mod — see [Mod Package](mod-package.md)).
+
+If you publish with `TFM2ModUploader.exe`, you can skip the manual build: the uploader detects a stable mod (a `Cargo.toml` that depends on `mod-api-stable`), builds it with your default toolchain, and even installs `mod-api-stable` next to your mod if it is missing (it looks in `mod-sdk-stable` beside the uploader, or wherever `TFM2_STABLE_SDK_DIR` points).
+
+## What You Can Register
+
+Everything goes through the `StableMod` builder in `init`:
+
+| Call | Implement | What it does |
+|---|---|---|
+| `add_champion(...)` | `StableChampion` (+ `StableAction`, `StableEffectType`, `StablePassive`) | New champion, or [rework an existing one](override-existing-champions.md) by reusing its id |
+| `add_item(...)` | `StableItem` | New item with runtime callbacks |
+| `add_native_effect(name, ...)` | `StableEffectType` | Named effect referenced from `.data_champion` files via `DataEffectDef::Native` |
+| `set_extension(...)` | `StableExtension` | Client lifecycle hooks: title/game UI, save data, mod commands/events |
+| `set_server_extension(...)` | `StableServerExtension` | Authoritative server hooks: per-save data writes, client events |
+| `add_draft_score_hook(...)` | `StableDraftHook` | Adjust ban/pick scoring, or decide the exact ban/pick (candidate identities included) |
+| `add_player_input_ai(...)` | `StablePlayerAi` | Replace final per-tick player inputs |
+| `set_map_customizer(...)` | `StableMapCustomizer` | Edit the freshly built match map (towers, camps, lanes, nexus, fountains, wall/bush grids) before every match |
+| `set_match_hook(...)` | `StableMatchHook` | Custom match logic on top of an existing mode: start/tick hooks plus your own end condition and winner |
+
+During `init` you can also publish or consume runtime services shared between native mods with `host.register_service(...)` / `host.query_service(...)`.
+
+Inside gameplay callbacks you receive a `StableSim` context: entities, players, damage/heal/buff/CC, projectiles, kill log, debug drawing, direct mutation (HP/position/stats/gold, `force_end`), unit and projectile spawning, a delayed effect queue, and the live team-strategy document. Client extension hooks receive a `StableClient` context: scene kind (including NewGame options), full UI control, render-overlay drawing, audio, raw hotkeys, i18n, per-mod save data, mod commands/events, and management data reads (15 record kinds, champion info, game clock, head-to-head, current screen). Server hooks receive a `StableServerCtx`: per-mod save namespace, client event emission, settings and record documents (read/write), news injection, management event subscription, and forced transfers. The [Stable API Reference](stable-api-reference.md) covers all of it method by method.
+
+### Full UI control
+
+Every UI widget kind the game itself uses ("runner": label, button, checkbox, text_edit, slider, dropdown, image, tree_view, scroll_view, ...) is available:
+
+- **Create** — `ui_spawn_source(parent, source)` takes the same source text `.ui` asset files use, children and styles included: `ctx.ui_spawn_source("body", "my_hint:label { text: \"hi\"; }")`. `ui_spawn_template` still loads prebuilt template assets.
+- **Modify** — `ui_set_properties(path, "size: 24.; visible: true;")` applies any `.ui` property line (layout, colors, fonts, images, runner-specific settings) to an existing node. `ui_set_visible` / `ui_set_text` cover the two most common cases directly.
+- **Interact** — runtime widget state is readable and writable: `ui_checkbox_selected` / `ui_set_checkbox_selected`, `ui_text_edit_text` / `ui_set_text_edit_text`, `ui_slider_ratio` / `ui_set_slider_ratio`, `ui_selectable_selected`, `ui_dropdown_selected_item`, or the generic `ui_state_json` / `ui_set_state_json`.
+- **Observe** — `ui_register_click` for plain buttons, or `ui_register_path_events` + `ui_current_event` to receive **every** UI event on a path (clicks, checkbox toggles, text edit completion, tree view moves, ...) with a JSON payload.
+- **Inspect / remove** — `ui_runner_name(path)` tells you what kind of widget a node is; `ui_remove_node(path)` deletes a subtree.
+
+All of this is regular Rust — traits and safe wrapper types. You never write `unsafe` or FFI code yourself.
+
+## Changing Rules, Maps, and Data (JSON Paths)
+
+Large game structures (settings, the match map, team/athlete records) are exposed as **JSON documents** instead of hundreds of individual functions. You read or write any field by its dot-separated path; an empty path means the whole document, and numbers index arrays.
+
+```rust
+// Server hook: double kill gold for every later match in this save.
+let gold = ctx.setting_get_i64(SettingTargetV1::GameSetting, "kill_gold").unwrap_or(0);
+ctx.setting_set_json(SettingTargetV1::GameSetting, "kill_gold", &(gold * 2).to_string());
+
+// Map customizer: read both nexus positions, then move the first tower's
+// blue-side x coordinate (positions are [[blue_x, blue_y], [red_x, red_y]]).
+let nexus = doc.get_json("nexus_pos");
+doc.set_i64("towers.0.pos.0.0", 120_000);
+
+// Server hook: rename a team (typed helpers exist for strings/ints/bools).
+ctx.team_set_string(team_id, "name", "New Name");
+```
+
+Writes are validated by round-tripping the whole document through the game's own schema — a write that would produce an invalid document is rejected atomically and returns `false`, so you cannot corrupt a save or a match with a typo.
+
+Combining these is how you build what feels like a **custom game mode** without one: settings JSON (rules and numbers) + a map customizer (geometry and objects) + a match hook (win condition, per-tick logic) + sim mutation (executing your rules). Match hooks and map customizers run inside the deterministic simulation — derive any randomness only from the `rng_seed` you are handed, never from wall clocks or `rand::random`.
+
+## Compatibility Rules
+
+- Your save data, commands, and events are namespaced to your mod id automatically.
+- Unknown enum codes can appear after game updates (new scenes, new tags). The wrappers surface them as `None` — ignore what you do not recognize.
+- A DLL is only rejected when it requires a **newer** API level than the game supports; updating the game then fixes it. Old DLLs on new games keep loading.
+- ABI compatibility is not behavior compatibility: if the game changes, what your mod *does* can shift even though it still loads. Test after big game updates.
+
+## The Classic Path Is Going Away
+
+The classic [`mod-api` path](native-rust-mods.md) is **deprecated**. Its SDK is supported **through game version 0.5 only — from 0.6 the classic SDK is no longer shipped or updated**. Classic DLLs are tied to one exact game build and must be rebuilt after every update even today.
+
+**Strongly prefer the stable path for everything.** It now covers champions, items, effects, full UI control, render overlays, audio, hotkeys, save data, networking, management records and events, transfers, map/match customization, and both AI hook surfaces. If you hit something the stable contract genuinely cannot do, report it so the stable API can grow that function — do not start a new classic mod for it.

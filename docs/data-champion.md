@@ -183,7 +183,7 @@ The example below defines a ranged magic champion with a basic attack, two skill
 
 ## Top-Level Fields
 
-- `id`: Champion id. Use a new unique id to add a champion, or use an existing base-game champion id to rework that champion. Keep it stable after release because saves, ban/pick data, and patches may refer to it.
+- `id`: Champion id. Use a new unique id to add a champion, or use an existing base-game champion id to rework that champion — see [Override Existing Champions](override-existing-champions.md). Keep it stable after release because saves, ban/pick data, and patches may refer to it.
 - `category`: `Melee`, `Range`, `Magician`, `Util`, or `Assassin`.
 - `tags`: Any of `AD`, `AP`, `Heal`, `Shield`, `Dot`, `CC`, `Range`, `Melee`, `Tank`, `Magic`.
 - `stat`: Base level 1 stats.
@@ -300,47 +300,11 @@ Add those keys through an i18n merge. See [Asset Overrides and i18n](asset-overr
 
 ## Reworking an Existing Champion
 
-To rework a base-game champion with JSON, set the data champion `id` to the exact existing champion id instead of making a new mod-prefixed id:
+To rework a base-game champion with JSON, set the data champion `id` to the exact existing champion id instead of making a new mod-prefixed id. The file then replaces the built-in champion for lookup and gameplay while the public id — and everything that refers to it: saves, ban/pick references, balance patch data, internal roster ordering — stays stable.
 
-```json
-{
-  "id": "fighter",
-  "category": "Melee",
-  "tags": ["AD", "Melee"],
-  "stat": {
-    "attack": 55,
-    "magic_power": 0,
-    "hp": 700,
-    "defence": 35,
-    "magic_resistance": 25,
-    "move_speed": 1100,
-    "hp_regen": 3,
-    "stack": 0,
-    "crit_chance": 0
-  },
-  "growth": {
-    "attack": 5,
-    "magic_power": 0,
-    "hp": 90,
-    "defence": 4,
-    "magic_resistance": 3,
-    "move_speed": 0,
-    "hp_regen": 1,
-    "stack": 0,
-    "crit_chance": 0
-  },
-  "attack": { "action_name": "attack" },
-  "skill": { "action_name": "skill" },
-  "skill2": { "action_name": "skill2" },
-  "ult": { "action_name": "ult" }
-}
-```
+If a data champion and a native Rust champion both use the same existing id, the native Rust runtime takes priority for custom logic.
 
-The game treats this as a replacement for lookup and gameplay while keeping the champion's public id and internal ordering stable. Existing saves, ban/pick references, and balance patch references that point to that id continue to point to the same champion.
-
-If you also need to change the champion name or skill descriptions, merge the matching text keys into `asset/base/text/champion` through `mod.override_info`. Do not put player-facing text directly into the JSON when it should be localized.
-
-If a data champion and a native Rust champion both use the same existing id, the native Rust runtime takes priority for custom logic. Use one approach per champion unless you intentionally need the Rust side to own the runtime behavior.
+See [Override Existing Champions](override-existing-champions.md) for the full guide: a complete example, keeping the original look, localized names and descriptions, auto-balance behavior, precedence rules, and how to verify the rework.
 
 ## Sprite Binding
 

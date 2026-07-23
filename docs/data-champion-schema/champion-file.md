@@ -44,7 +44,7 @@ A data champion is a JSON file with the `.data_champion` extension. The asset lo
 
 | Field | Type | Required | Default | Notes |
 | --- | --- | --- | --- | --- |
-| `id` | string | yes | none | New unique champion id, or an existing base-game champion id when reworking that champion. Keep stable after release. |
+| `id` | string | yes | none | New unique champion id, or an existing base-game champion id when reworking that champion — see [Override Existing Champions](../override-existing-champions.md). Keep stable after release. |
 | `category` | `ChampionCategory` | no | `Melee` | See [Enums](enums.md). |
 | `tags` | `ChampionTag[]` | no | `[]` | Used for UI/search/balance classification. |
 | `stat` | `EntityStat` | no | nonzero default stat | Base level 1 stats. See [Buffs and Stats](buffs-and-stats.md). |
@@ -117,3 +117,5 @@ A `.data_champion` file can replace an existing base-game champion by using that
 For a new champion, keep using a unique mod-prefixed id such as `my_mod_fire_mage`. For a rework, do not prefix the id; use the base id exactly, such as `fighter`.
 
 The replacement should still define complete `stat`, `growth`, `attack`, `skill`, `skill2`, and any `ult` data it needs. Missing text should be supplied through i18n merges, not as hardcoded player-facing strings.
+
+See [Override Existing Champions](../override-existing-champions.md) for the full rework guide.

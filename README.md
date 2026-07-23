@@ -41,7 +41,7 @@ Native mods are for things that need custom code.
 - Expose reusable runtime services that other native mods can depend on.
 - Build deeper experiments that cannot be described with JSON alone.
 
-Native mods need the Mod SDK and should be rebuilt for the game version they target.
+New native mods should use the stable mod API: build once with any Rust toolchain, and the DLL keeps working across game updates. The classic native path is **deprecated** — its SDK is supported through game version 0.5 only and is no longer shipped or updated from 0.6. If you maintain a classic mod, we strongly recommend migrating it to the stable API.
 
 ## Start Here
 
@@ -49,10 +49,13 @@ Native mods need the Mod SDK and should be rebuilt for the game version they tar
 - [Mod Package Structure](docs/mod-package.md)
 - [Data-Only Champions](docs/data-champion.md)
 - [Data Champion Schema](docs/data-champion-schema/index.md)
+- [Override Existing Champions](docs/override-existing-champions.md)
 - [Assets and Sprite Sheets](docs/assets-and-sprite-sheets.md)
 - [Asset Overrides and i18n](docs/asset-overrides-and-i18n.md)
 - [Ban/Pick Illustration Packs](docs/banpick-illustration-packs.md)
-- [Native Rust Mods](docs/native-rust-mods.md)
+- [Stable Native Mods (recommended)](docs/stable-native-mods.md)
+- [Stable API Reference](docs/stable-api-reference.md)
+- [Native Rust Mods (classic, deprecated — SDK support ends after 0.5)](docs/native-rust-mods.md)
 - [Native Mod API Reference](docs/native-mod-api-reference.md)
 - [Native AI Hooks](docs/native-ai-hooks.md)
 - [Mod Save Data](docs/mod-save-data.md)

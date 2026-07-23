@@ -1,5 +1,7 @@
 # Native Mod API Reference
 
+> **⚠️ Deprecated — migrate to the stable API.** The classic native path is deprecated. Its Mod SDK is supported **through game version 0.5 only; from 0.6 the classic SDK is no longer shipped or updated**. Classic DLLs already require a rebuild for every game update — **we strongly recommend moving to the [stable mod API](stable-native-mods.md) now**: build once with any Rust toolchain, keep working across updates, with champions, items, full UI control, AI hooks, custom-mode building blocks, and more.
+
 This page lists the Rust API exported by the `mod_api` crate for native DLL mods.
 Most mods start with:
 
@@ -82,7 +84,7 @@ Methods:
 
 Defines one champion.
 
-Use `add_champion` with a new unique id to add a champion. Use `replace_champion` with an existing base champion id to rework that champion while preserving saved champion ids, ban/pick references, and patch references. If `replace_champion` receives an id that is not present in the base game, it behaves like `add_champion`.
+Use `add_champion` with a new unique id to add a champion. Use `replace_champion` with an existing base champion id to rework that champion while preserving saved champion ids, ban/pick references, and patch references. If `replace_champion` receives an id that is not present in the base game, it behaves like `add_champion`. See [Override Existing Champions](override-existing-champions.md).
 
 | Method | Signature | Default |
 | --- | --- | --- |

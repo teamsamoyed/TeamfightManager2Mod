@@ -1,5 +1,7 @@
 # Native AI Hooks
 
+> **⚠️ Deprecated — migrate to the stable API.** This page covers the classic path's AI hooks. The classic Mod SDK is supported **through game version 0.5 only; from 0.6 it is no longer shipped or updated**. The stable API has both hooks and more (full simulation reads inside the player AI, exact ban/pick decision overrides, candidate identities) — see the [Stable API Reference](stable-api-reference.md).
+
 Native Rust mods can customize two AI surfaces:
 
 - Ban/pick candidate scoring.

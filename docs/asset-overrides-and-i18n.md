@@ -52,7 +52,7 @@ Use a same-id `.data_champion` file when you want to change an existing champion
 
 Use `mod.override_info` when you want to replace or merge assets such as text, sprites, UI layouts, or other asset files. An asset override can change what a champion looks like or what text it shows, but it is not the same as registering a gameplay rework.
 
-For existing champion reworks, keep player-facing text in i18n files. Merge changed names and skill descriptions into `asset/base/text/champion` instead of hardcoding display text in champion JSON or native Rust code.
+For existing champion reworks, keep player-facing text in i18n files. Merge changed names and skill descriptions into `asset/base/text/champion` instead of hardcoding display text in champion JSON or native Rust code. See [Override Existing Champions](override-existing-champions.md) for the full rework guide.
 
 ## i18n Files
 
