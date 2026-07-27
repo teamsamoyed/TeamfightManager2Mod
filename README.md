@@ -41,7 +41,7 @@ Native mods are for things that need custom code.
 - Expose reusable runtime services that other native mods can depend on.
 - Build deeper experiments that cannot be described with JSON alone.
 
-New native mods should use the stable mod API: build once with any Rust toolchain, and the DLL keeps working across game updates. The classic native path is **deprecated** — its SDK is supported through game version 0.5 only and is no longer shipped or updated from 0.6. If you maintain a classic mod, we strongly recommend migrating it to the stable API.
+New native mods should use the stable mod API: build once with any Rust toolchain, and the module keeps working across game updates. It also works on Windows, macOS, and Linux — you build a binary for each platform you want to support, put them in the same package, and the game picks the right one ([Platform Support](docs/stable-native-mods.md#platform-support)). The classic native path is **deprecated** — its SDK is Windows-only, supported through game version 0.5 only, and is no longer shipped or updated from 0.6. If you maintain a classic mod, we strongly recommend migrating it to the stable API.
 
 ## Start Here
 

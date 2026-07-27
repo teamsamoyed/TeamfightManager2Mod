@@ -126,7 +126,7 @@ For mods, it includes normal mod files:
 
 - `mod.mod_info`
 - `mod.override_info`
-- compiled DLLs
+- compiled native modules (`.dll`, `.so`, `.dylib`) — every platform binary you placed in the folder, so one Workshop item can serve Windows, Linux, and macOS players
 - JSON and data files
 - PNG/JPG images
 - Aseprite files
@@ -141,9 +141,11 @@ It skips files that should not be part of the Workshop download:
 
 - `mod.workshop_id`
 - `database_pack.workshop_id`
-- `src/` for normal mod packages
+- `src/`, `target/`, `Cargo.toml`, and `Cargo.lock` for normal mod packages
 
-This means native Rust source code is not uploaded. Only the compiled DLL is uploaded.
+This means native Rust source code and build output are not uploaded. Only the compiled modules are.
+
+For code mods, the item description also gains a `Runs on:` line listing the platforms your binaries cover. It is derived from the files you shipped, so it always matches reality — see [Platform Support](stable-native-mods.md#platform-support) for how to build for more than one platform.
 
 ## Database Packs
 

@@ -158,11 +158,11 @@ The folder name is the package id. Put the database files directly in that folde
 - `thumbnail.png`: Image shown in the in-game Mods menu and accepted as a Workshop preview fallback.
 - `preview.png` or `preview.jpg`: Image used as the Steam Workshop preview. If these are missing, the uploader can fall back to `thumbnail.png` or `thumbnail.jpg`.
 - `mod.override_info`: Asset merge and override rules for normal mods.
-- `<mod_id>.dll`: Native Rust DLL for code-based mods.
+- `<mod_id>.dll`, `<mod_id>.so`, `<mod_id>.dylib`: Native Rust modules for code-based mods — Windows, Linux, and macOS respectively. Ship one per platform you support; each player's game loads only the one matching their system. Which platforms your mod supports is derived from exactly these files, so there is nothing to declare in `mod.mod_info`. See [Platform Support](stable-native-mods.md#platform-support).
 - `mod.workshop_id`: Created by the Workshop uploader after the first normal mod upload.
 - `database_pack.workshop_id`: Created by the Workshop uploader after the first database pack upload.
 
-For native DLL mods, the DLL's registered mod id must match the folder name. This prevents accidentally loading a DLL from the wrong mod folder.
+For native mods, the module's registered mod id must match the folder name. This prevents accidentally loading a module from the wrong mod folder.
 
 Workshop id files belong to your local working copy. Keep them if you want `TFM2ModUploader.exe` to update the same Steam Workshop item later. Do not include them in a public template that other creators are expected to copy.
 
@@ -170,9 +170,11 @@ Workshop id files belong to your local working copy. Keep them if you want `TFM2
 
 When uploading to Workshop, `TFM2ModUploader.exe` copies your package into a temporary upload folder.
 
-For normal mods, it skips:
+For normal mods, it skips your Rust project — the built module is uploaded, the sources that produced it are not:
 
 - `src/`
+- `target/`
+- `Cargo.toml`, `Cargo.lock`
 - `mod.workshop_id`
 - `database_pack.workshop_id`
 
