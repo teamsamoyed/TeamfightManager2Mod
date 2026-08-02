@@ -161,7 +161,7 @@ Optional champion passive. Implement `clone_box` because the engine clones runti
 | `on_spawn` | `fn on_spawn(&mut self, ctx: &mut GameCtx, player: usize, entity: usize)` | no-op |
 | `on_attack` | `fn on_attack(&mut self, ctx: &mut GameCtx, player: usize, entity: usize, target: usize, damage: &mut usize)` | no-op |
 | `on_damaged` | `fn on_damaged(&mut self, ctx: &mut GameCtx, player: usize, entity: usize, attacker: usize, damage: usize)` | no-op |
-| `on_kill` | `fn on_kill(&mut self, ctx: &mut GameCtx, player: usize, entity: usize)` | no-op |
+| `on_kill` | `fn on_kill(&mut self, ctx: &mut GameCtx, player: usize, entity: usize, victim: usize)` | no-op |
 | `on_update` | `fn on_update(&mut self, ctx: &mut GameCtx, rng_seed: u64, player: usize, entity: usize)` | no-op |
 | `on_base_attack` | `fn on_base_attack(&mut self, ctx: &mut GameCtx, rng_seed: u64, player: usize, entity: usize)` | no-op |
 | `on_assist` | `fn on_assist(&mut self, ctx: &mut GameCtx, player: usize, entity: usize)` | no-op |
@@ -195,13 +195,21 @@ Defines an item and its runtime callbacks. Implement `clone_box` because the gam
 | `previous_tier` | `fn previous_tier(&self) -> Vec<String>` | empty |
 | `tags` | `fn tags(&self) -> Vec<ItemTag>` | empty |
 | `category` | `fn category(&self) -> ItemCategory` | `ItemCategory::default()` |
-| `on_attack` | `fn on_attack(&mut self, ctx: &mut GameCtx, caster: usize, target: usize, damage: &mut usize, damage_type: DamageType)` | no-op |
+| `on_attack` | `fn on_attack(&mut self, ctx: &mut GameCtx, caster: usize, target: usize, damage: &mut usize, damage_type: DamageType, attack_type: AttackType, is_crit: bool)` | no-op |
+| `on_base_attack` | `fn on_base_attack(&mut self, ctx: &mut GameCtx, rng_seed: u64, player: usize, entity: usize)` | no-op |
 | `update` | `fn update(&mut self, ctx: &mut GameCtx, rng_seed: u64, player: usize)` | no-op |
 | `on_spawn` | `fn on_spawn(&mut self, ctx: &mut GameCtx, player: usize)` | no-op |
 | `on_healed` | `fn on_healed(&mut self, ctx: &mut GameCtx, caster: Option<usize>, entity: usize, heal: usize)` | no-op |
-| `on_damaged` | `fn on_damaged(&mut self, ctx: &mut GameCtx, player: usize, entity: usize, attacker: usize, damage: usize)` | no-op |
-| `on_kill` | `fn on_kill(&mut self, ctx: &mut GameCtx, rng_seed: u64, player: usize, entity: usize)` | no-op |
-| `on_skill_hit` | `fn on_skill_hit(&mut self, ctx: &mut GameCtx, rng_seed: u64, caster: usize, target: usize)` | no-op |
+| `on_damaged` | `fn on_damaged(&mut self, ctx: &mut GameCtx, player: usize, entity: usize, attacker: usize, damage: usize, damage_type: DamageType, attack_type: AttackType, is_crit: bool)` | no-op |
+| `on_kill` | `fn on_kill(&mut self, ctx: &mut GameCtx, rng_seed: u64, player: usize, entity: usize, victim: usize)` | no-op |
+| `on_assist` | `fn on_assist(&mut self, ctx: &mut GameCtx, player: usize, entity: usize)` | no-op |
+| `on_dead` | `fn on_dead(&mut self, ctx: &mut GameCtx, player: usize)` | no-op |
+| `on_cc` | `fn on_cc(&mut self, ctx: &mut GameCtx, rng_seed: u64, player: usize, caster: usize)` | no-op |
+| `on_skill_hit` | `fn on_skill_hit(&mut self, ctx: &mut GameCtx, rng_seed: u64, caster: usize, target: usize, is_ally: bool)` | no-op |
+
+In `on_attack`, `on_damaged`, `on_kill` and `on_assist`, `entity` is the item owner's own champion; `on_kill` reports the killed entity separately as `victim`. `on_attack` fires for skills as well as basic attacks — use `on_base_attack`, or gate on `attack_type`, for auto-attack-only effects. `on_skill_hit` fires for ally-targeted skills too, flagged by `is_ally`.
+
+Note that the item build hook, shields, attack-speed reads and champion lane priors added to the stable API in 0.5.4 have **no classic equivalent** — the classic path is frozen apart from these signature updates. See [Stable Native Mods](stable-native-mods.md).
 
 ## Simulation Context
 
@@ -893,6 +901,7 @@ pub enum ItemCategory {
     MagicResistance,
     Magic,
     Hp,
+    Support,
 }
 
 pub enum DamageType {

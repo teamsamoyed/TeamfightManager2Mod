@@ -1,15 +1,36 @@
-# Stable API Reference (Level 1)
+# Stable API Reference
 
 The complete, per-method reference for the stable mod API. If you have not built a stable mod yet, start with [Stable Native Mods](stable-native-mods.md) — this page assumes you know how to build and install one.
 
 Everything here is plain Rust: traits you implement and safe wrapper types you call. You never write `unsafe` or FFI yourself.
 
-**Contents**: [Units & conventions](#1-units--conventions) · [Registration](#2-registration) · [Gameplay traits](#3-gameplay-traits) · [Simulation context](#4-simulation-context-stablesim) · [Match hook & map customizer](#5-match-hook--map-customizer) · [Client context](#6-client-context-stableclient) · [Server context](#7-server-context-stableserverctx) · [Draft hook](#8-draft-hook-stabledrafthook) · [Player AI](#9-player-input-ai-stableplayerai) · [Value types](#10-value-types) · [Enum codes](#11-enum-codes) · [Availability matrix](#12-availability-matrix) · [Debugging](#13-debugging) · [Pitfalls & FAQ](#14-pitfalls--faq)
+**Contents**: [Units & conventions](#1-units--conventions) · [Registration](#2-registration) · [Gameplay traits](#3-gameplay-traits) · [Simulation context](#4-simulation-context-stablesim) · [Match hook & map customizer](#5-match-hook--map-customizer) · [Client context](#6-client-context-stableclient) · [Server context](#7-server-context-stableserverctx) · [Draft & build hooks](#8-draft--build-hooks) · [Player AI](#9-player-input-ai-stableplayerai) · [Value types](#10-value-types) · [Enum codes](#11-enum-codes) · [Availability matrix](#12-availability-matrix) · [Debugging](#13-debugging) · [Pitfalls & FAQ](#14-pitfalls--faq)
 
 Two rules make your DLL survive game updates:
 
 1. **Ignore unknown enum codes.** Wrappers surface codes newer than your build as `None` — skip them.
 2. **Write failure-tolerant code.** On an older game, calls into newer features fail gracefully (`None` / `false` / empty), never crash.
+
+Methods tagged **`0.5.4+`** were added in that game version. Calling one on an older game fails gracefully — nothing to guard, nothing to migrate. Your DLL keeps loading on older games either way, so it is always safe to build against the newest SDK.
+
+### Added in 0.5.4
+
+| Area | Addition |
+|---|---|
+| Damage | `deal_damage` now runs the **full attack pipeline** — resistances, crit, damage/tank statistics, kill and assist credit, item and buff procs, lifesteal/reflect, and the in-match damage number. `deal_damage_raw` keeps the old unmitigated behaviour (§4-4) |
+| Shields | `entity_add_shield` / `entity_clear_shield` (§4-4) |
+| Attack speed | `entity.attack_interval()` / `entity.attack_speed_mult()` (§4-2) |
+| Item callbacks | `on_base_attack`, `on_assist`, `on_dead`, `on_cc`, `on_upgrade` / `on_upgraded_from`; `on_attack` and `on_damaged` now carry `attack_type` + `is_crit`; `on_skill_hit` now also fires for **ally-targeted** skills via `is_ally` (§3-5) |
+| Kill callbacks | `on_kill` now also receives the **killed** entity — the existing `entity` argument was always the owner's own champion (§3-4, §3-5) |
+| Item builds | `StableItemBuildHook` — steer which final items the AI targets, including your own items (§8-2) |
+| Champions | `lane_prior()` — seed which lanes your champion belongs in (§3-1) |
+| Items | `ItemCategoryV1::Support` (§11) |
+
+Three fixes reach **already-built** modules, because they live on the game's side of the boundary:
+
+- `deal_damage` runs the full pipeline for *every* caller, including modules built before 0.5.4. Damage that used to ignore armor and magic resist is now mitigated, and it now earns kill credit and procs items. If your mod deliberately wanted the old unmitigated subtraction, rebuild and switch that call to `deal_damage_raw`.
+- `queue_effect`'s `delay_ticks` was previously offset by the current tick, so an effect queued 30 ticks out at the 10-minute mark actually fired about ten minutes later. It now means what it says. Mods that compensated for the old behaviour should drop the compensation.
+- **Mod actions now show the game's own floating numbers.** `deal_damage`, `deal_damage_raw`, `heal` and the gold calls used to change the world silently — no damage number, no heal number, no gold popup — because they ran without the frame the match records into. See §4-8.
 
 A panic inside any of your callbacks is caught by the game and **disables your mod** (the game keeps running) — so handle failures with `?`/defaults instead of `unwrap`.
 
@@ -55,7 +76,8 @@ Contexts (`StableSim`, `StableClient`, …) and borrowed strings (`StrV1`) are v
 | `add_native_effect(name, effect)` | A named effect — referenced by name from `.data_champion` files, `queue_effect`, and `spawn_projectile` | `StableEffectType` |
 | `set_extension` | Client lifecycle hooks (§6) | `StableExtension` |
 | `set_server_extension` | Management-server hooks (§7) | `StableServerExtension` |
-| `add_draft_score_hook` | Ban/pick scoring + full decision override (§8) | `StableDraftHook` |
+| `add_draft_score_hook` | Ban/pick scoring + full decision override (§8-1) | `StableDraftHook` |
+| `add_item_build_hook` | Which final items the AI builds (§8-2) | `StableItemBuildHook` |
 | `add_player_input_ai` | Per-tick player input override (§9) | `StablePlayerAi` |
 | `set_map_customizer` | Match-map editing hook (§5) | `StableMapCustomizer` |
 | `set_match_hook` | Match rule hook — the backbone of custom modes (§5) | `StableMatchHook` |
@@ -79,6 +101,16 @@ fn skill(&self) -> Box<dyn StableAction>;        // Q
 fn skill2(&self) -> Box<dyn StableAction>;       // W
 fn ult(&self) -> Option<Box<dyn StableAction>>;  // R (optional)
 fn passive(&self) -> Option<Box<dyn StablePassive>>;
+fn lane_prior(&self) -> Option<Vec<(LaneV1, usize)>>;   // 0.5.4+  lane suitability, 0..=100
+```
+
+**`lane_prior` (0.5.4+) — tell the draft AI where your champion plays.** The ban/pick model ships pretrained for the built-in roster, so a brand-new champion starts with a flat profile and reads as equally playable in all five lanes. Return a weight per lane (0..=100, 50 = neutral) and the game seeds it as pseudo-observations when the networks are prepared; real match results then take over. `None` keeps the flat default, and a champion that already has match history is left alone.
+
+```rust
+fn lane_prior(&self) -> Option<Vec<(LaneV1, usize)>> {
+    Some(vec![(LaneV1::Jungle, 100), (LaneV1::Top, 60), (LaneV1::Mid, 20),
+              (LaneV1::Bottom, 0), (LaneV1::Support, 0)])
+}
 ```
 
 A champion's visuals are asset-driven by its id: sprites, animation tags, and skill icons follow the same rules as data champions — see [Sprite Binding](data-champion.md#sprite-binding), [Animation Tags](data-champion.md#animation-tags), and [Skill Icons](data-champion.md#skill-icons). A rework (reusing an existing id) inherits that champion's existing assets automatically.
@@ -144,20 +176,48 @@ impl StableEffectType for Shackle {
 
 ### 3-4. `StablePassive` — every hook receives `&mut StableSim`
 
+In every hook, `entity` is **the passive owner's own champion**, never the other party.
+
 | Hook | When |
 |---|---|
 | `on_spawn(sim, player, entity)` | Spawn / respawn |
 | `on_attack(sim, player, entity, target, damage: &mut usize)` | Basic attack hit — mutate `damage` |
 | `on_damaged(sim, player, entity, attacker, damage)` | After taking damage |
-| `on_kill(sim, player, entity)` / `on_assist(sim, player, entity)` | Kill / assist |
+| `on_kill(sim, player, entity, victim)` | Kill — `victim` is what died (`victim` is 0.5.4+) |
+| `on_assist(sim, player, entity)` **0.5.4+** | Assist |
 | `on_update(sim, rng_seed, player, entity)` | Every tick |
-| `on_base_attack(sim, rng_seed, player, entity)` | Basic attack cast |
-| `on_dead(sim, player)` | Death |
+| `on_base_attack(sim, rng_seed, player, entity)` **0.5.4+** | Basic attack cast |
+| `on_dead(sim, player)` **0.5.4+** | Death |
 
 ### 3-5. `StableItem`
 
 Definition: `key` (unique), `icon` (asset path), `price`, `tier`, `stat() -> BuffV1` (equip stats, expressed as a buff), `next_tier() / previous_tier() -> Vec<String>` (build tree), `tags() -> Vec<ItemTagV1>`, `category() -> ItemCategoryV1`.
-Callbacks: `on_attack(damage: &mut usize, attack_type)`, `update(rng_seed, player)` (every tick), `on_spawn`, `on_healed(is_self, target, amount)`, `on_damaged`, `on_kill(rng_seed, …)`, `on_skill_hit(rng_seed, …)`.
+
+Every callback receives `&mut StableSim`. As with passives, `entity` is **the item owner's own champion**.
+
+| Hook | When |
+|---|---|
+| `on_spawn(sim, player)` | Item acquired / owner spawned |
+| `update(sim, rng_seed, player)` | Every tick |
+| `on_attack(sim, caster, target, damage: &mut usize, damage_type, attack_type, is_crit)` | Owner deals damage — **basic attacks *and* skills**. Mutate `damage` |
+| `on_base_attack(sim, rng_seed, player, entity)` | Basic attack only |
+| `on_damaged(sim, player, entity, attacker, damage, damage_type, attack_type, is_crit)` | Owner took damage |
+| `on_healed(sim, caster: Option<usize>, entity, heal)` | Owner healed (`None` caster = regen) |
+| `on_kill(sim, rng_seed, player, entity, victim)` | Owner killed `victim` |
+| `on_assist(sim, player, entity)` | Owner credited with an assist |
+| `on_dead(sim, player)` | Owner died |
+| `on_cc(sim, rng_seed, player, caster)` **0.5.4+** | Owner hit by hard CC (stun / bind / airborne / fear / charm); `caster` applied it. Does not fire if the CC was cleansed on application |
+| `on_skill_hit(sim, rng_seed, caster, target, is_ally)` | Owner's skill hit `target`. `is_ally == true` for ally-targeted skills — shields, heals, buffs |
+| `on_upgrade(next_key) -> u64` / `on_upgraded_from(prev_key, carry)` **0.5.4+** | This item is being replaced by an upgrade / this item replaced a predecessor |
+
+**Crit and attack type.** `on_attack` fires for every hit the owner lands, so gate on `attack_type == AttackTypeV1::BaseAttack` (or use `on_base_attack`) for auto-attack-only effects, and on `is_crit` for crit riders.
+
+**Carrying state through an upgrade.** Stacking items lose their stacks when the owner upgrades unless you hand them over. `on_upgrade` returns one opaque `u64`, and the successor receives it in `on_upgraded_from`:
+
+```rust
+fn on_upgrade(&mut self, _next_key: &str) -> u64 { self.stacks as u64 }
+fn on_upgraded_from(&mut self, _prev_key: &str, carry: u64) { self.stacks = carry as usize; }
+```
 
 ---
 
@@ -191,7 +251,9 @@ Received by effect `apply`, passive/item callbacks, and match hooks. Player AI g
 | `pos() -> (u64, u64)` | World position |
 | `hp() -> (usize, usize)` | (current, max) |
 | `team() -> usize` | 0 = blue, 1 = red |
-| `level()`, `shield()`, `radius()` | Level / shield amount / collision radius |
+| `level()`, `shield()`, `radius()` | Level / total shield amount / collision radius |
+| `attack_interval()` **0.5.4+** | Ticks between basic attacks, **after** attack-speed buffs — the effective attack speed |
+| `attack_speed_mult()` **0.5.4+** | Attack-speed multiplier in percent (100 = unbuffed) |
 | `is_alive / is_champion / is_tower / is_minion / is_targetable() -> bool` | Kind & state checks |
 | `buff_count()` / `buff_at(i) -> Option<BuffV1>` | Active buffs |
 | `cc_count()` / `cc_at(i) -> Option<CcV1>` | Active crowd control |
@@ -212,11 +274,16 @@ Received by effect `apply`, passive/item callbacks, and match hooks. Player AI g
 
 | Method | Description |
 |---|---|
-| `deal_damage(attacker, target, ad, ap, AttackTypeV1)` | Damage through the full pipeline — resistances, kill credit, logs |
+| `deal_damage(attacker, target, ad, ap, AttackTypeV1)` | Damage through the game's own attack pipeline. `ad` is mitigated by armor, `ap` by magic resist; both are the **raw pre-mitigation** amounts |
+| `deal_damage_raw(...)` **0.5.4+** | Subtracts `ad + ap` HP with no mitigation, statistics or kill credit — only for mods that model their own damage math |
 | `heal(caster, target, amount)` | Heal (heal-reduction applies) |
 | `add_buff(target, &BuffV1)` / `apply_cc(target, &CcV1)` | Grant a buff / CC |
+| `entity_add_shield(id, amount, duration_ticks) -> bool` **0.5.4+** | Grant a damage-absorbing shield. Shields stack as separate layers, like the built-in shield effect; read the total back with `entity.shield()` |
+| `entity_clear_shield(id) -> usize` **0.5.4+** | Drop every shield layer (returns count) |
 | `entity_remove_buff(id, name) -> usize` | Remove every buff with that name (returns count) |
 | `entity_clear_cc(id) -> usize` | Clear all crowd control (returns count) |
+
+`deal_damage` is what you want in almost every case: it applies resistances and crit, records damage-dealt and damage-taken statistics, awards **kill and assist credit**, procs the target's and attacker's items and buffs, applies lifesteal and reflect, and shows the damage number in the match view. A shield is not a buff — it is a separate absorb layer, so grant it with `entity_add_shield`, not `add_buff`.
 
 ### 4-5. Direct mutation (custom-rule building blocks)
 
@@ -252,12 +319,25 @@ sim.spawn_projectile("my_mod_fireball", "my_mod:burn", &ProjectileSpawnV1 {
 
 - `spawn_unit(name, summoner_id, team, x, y, duration_ticks, &StatV1, &UnitAttackV1) -> Option<entity_id>` — `summoner_id` receives kill credit. Use the returned id for later reads/mutation.
 - `spawn_projectile(name, effect_name, &ProjectileSpawnV1) -> bool` — circular hit shape; movement `Target` (homes onto `target_id`) or `Linear` (flies to `target_x/y`, `penetrate` keeps going through hits); `casting_target` filters what it can hit (default Enemy).
-- `queue_effect(effect_name, attack_type, caster_id, &InputTargetV1, delay_ticks) -> bool` — false if the name is not registered.
+- `queue_effect(effect_name, attack_type, caster_id, &InputTargetV1, delay_ticks) -> bool` — false if the name is not registered. `delay_ticks` counts from now; `0` fires at the earliest drain, which is still inside the current tick unless it already ran. (Before 0.5.4 the delay was wrongly offset by the current tick.)
 - `strategy_get_json(team, path)` / `strategy_set_json(team, path, json)` — the team's live macro-strategy document. Fields (all enums): `focused` (pressured lane: `"Top"` / `"Bottom"` / `"All"`), `early_jungle`, `early_serpen`, `early_serpen_top`, `object_buildup`, `object_battle`, `morgard_use`, `tower_press`, `morgard_defense`, `object_finish`, `minion_wave`, `game_finish`.
 
 ### 4-7. Debug drawing
 
 `debug_draw_line(x1, y1, x2, y2, color)` and `debug_draw_circle(x, y, r, color)` — world coordinates, drawn over the match view. For visualizing your logic while developing.
+
+### 4-8. On-screen feedback — 0.5.4+
+
+Mod actions produce the same floating numbers the game's own actions do, with no extra call on your side:
+
+| Call | Shows |
+|---|---|
+| `deal_damage` / `deal_damage_raw` | Damage number over the target |
+| `heal` | Heal number over the target |
+| `player_add_gold` / `player_set_gold` | Gold popup, for **increases** only — the match view has no "gold spent" number |
+| `entity_set_hp` / `entity_set_base_stat` | Nothing, by design — these are silent state writes |
+
+The numbers only exist while a match is actually being watched. A skipped or briefly-simulated match records no frame, so the calls still apply but draw nothing.
 
 ---
 
@@ -584,7 +664,9 @@ The host keeps a bounded backlog (most recent 256) — polling every management 
 
 ---
 
-## 8. Draft hook (`StableDraftHook`)
+## 8. Draft & build hooks
+
+### 8-1. Draft hook (`StableDraftHook`)
 
 ```rust
 fn id(&self) -> String;
@@ -614,6 +696,47 @@ fn decide_ban / decide_pick(&self, ctx: &StableDraftContext<'_>) -> Option<usize
 fn decide_ban(&self, ctx: &StableDraftContext<'_>) -> Option<usize> {
     ctx.available_champions().iter().copied()
         .find(|&id| ctx.champion_category(id) == Some(ChampionCategoryV1::Assassin))
+}
+```
+
+### 8-2. Item build hook (`StableItemBuildHook`) — 0.5.4+
+
+Decides which **final items** the AI targets for a player. It runs once per player when a match's builds are picked, after the team's personal-tactics overrides have been applied — so this is the hook to use when your mod adds items and wants them actually built.
+
+```rust
+fn id(&self) -> String;
+fn priority(&self) -> i32;
+
+fn score_item(&self, ctx: &StableItemBuildContext<'_>, candidate: usize, base_score: f32)
+    -> StableDraftDecision;   // Pass | Add(delta) | Replace(score)
+
+fn decide_build(&self, ctx: &StableItemBuildContext<'_>) -> Vec<usize>;   // full override
+```
+
+- **score**: called for every selectable final item (tier 4+); adjusts the engine's ranking. `base_score` is `1.0` for items the engine already picked and `0.0` otherwise.
+- **decide**: return the exact item indices to build. An empty vec keeps the engine's build; indices outside the item list are dropped. If several hooks decide, the **highest priority** wins (ties go to load order).
+- `candidate` and the returned indices index into `ctx.item_keys()`. Resolve your own items by key with `ctx.item_index("my_mod_blade")` — never hardcode a number, because the item list grows and reorders with mods.
+
+`StableItemBuildContext`:
+
+| Method | Description |
+|---|---|
+| `team()`, `lane() -> Option<LaneV1>`, `champion_key() -> &str` | Who this build is for |
+| `item_count()`, `item_keys() -> Vec<&str>`, `item_key(i)` | Every selectable item, in engine order |
+| `item_index(key) -> Option<usize>` | Look an item up by key |
+| `item_category(i) -> Option<ItemCategoryV1>`, `item_tier(i) -> Option<usize>` | Candidate metadata |
+| `base_build() -> &[usize]` | The engine's current pick |
+| `ally_champions() / enemy_champions() -> Vec<&str>` | Both team compositions |
+
+```rust
+// "Supports build my support item first; everyone else keeps the engine's build."
+fn decide_build(&self, ctx: &StableItemBuildContext<'_>) -> Vec<usize> {
+    if ctx.lane() != Some(LaneV1::Support) { return Vec::new(); }
+    let Some(mine) = ctx.item_index("my_mod_aegis") else { return Vec::new() };
+    let mut build = vec![mine];
+    build.extend(ctx.base_build().iter().copied().filter(|&i| i != mine));
+    build.truncate(3);
+    build
 }
 ```
 
@@ -713,7 +836,7 @@ Constructors: `CcV1::stun(ticks)`, `CcV1::of_kind(CcKindV1, ticks)`.
 `x, y, z, rot, flip_x, flip_y, pivot_x, pivot_y, uv: (x, y, w, h normalized — (0,0,1,1) = whole texture), sample_nearest`.
 
 ### Wrapper-owned types
-`StableUiEvent { kind, path, payload_json }` · `StableModEvent { event, payload }` · `StableManagementEvent { seq, kind, payload_json }` · `StableChampionBrief { name, category, tags, stat, growth }` · `StableInputEvent { kind, key }` · `StableDraftDecision { Pass | Add(f32) | Replace(f32) }` · `StableEventTarget { Broadcast | Player(id) | Team(id) }` · `StableCommand` · `StableEffectSpec`.
+`StableUiEvent { kind, path, payload_json }` · `StableModEvent { event, payload }` · `StableManagementEvent { seq, kind, payload_json }` · `StableChampionBrief { name, category, tags, stat, growth }` · `StableInputEvent { kind, key }` · `StableDraftDecision { Pass | Add(f32) | Replace(f32) }` (also used by the item build hook) · `StableEventTarget { Broadcast | Player(id) | Team(id) }` · `StableCommand` · `StableEffectSpec` · `StableItemBuildContext`.
 
 ---
 
@@ -726,7 +849,7 @@ All enum codes are `u32` and append-only — treat unknown codes as "skip".
 | `ChampionCategoryV1` | Melee, Range, Magician, Util, Assassin |
 | `ChampionTagV1` | Ad, Ap, Heal, Shield, Dot, Cc, Range, Melee, Tank, Magic |
 | `ItemTagV1` | Ad, Ap, AttackSpeed, Defense, MagicResistance, Hp, DefensePenetration, Vamp, HealReduce, ShieldBreak, MoveSpeed, AttackRange, Shield, HpPercentDamage, AsDebuff, ReflectDamage, Toughness, MrDebuff, RangeDamage, MrPenetration, CooltimeReduce, DotDamage, HpRegen, MyHpPercentDamage, ShareDamage, Range |
-| `ItemCategoryV1` | Ad, AttackSpeed, Defense, MagicResistance, Magic, Hp |
+| `ItemCategoryV1` | Ad, AttackSpeed, Defense, MagicResistance, Magic, Hp, Support (0.5.4+) |
 | `AttackTypeV1` | BaseAttack, Skill, Dot, DotIgnoreShield, Item, Well |
 | `DamageTypeV1` | Ad, Ap, Fixed |
 | `CastingTypeV1` | Targeting, Position, Direction, None |
@@ -786,6 +909,12 @@ All enum codes are `u32` and append-only — treat unknown codes as "skip".
 - **Determinism violations** (clocks, HashMap iteration order, mutable statics, threads inside sim callbacks) break replays and multiplayer sync. Derive an `StdRng` from the provided `rng_seed`.
 - **Raw record writes** are schema-validated only. Editing match records directly can disagree with standings — for match outcomes use the match hook's `force_end` (updates standings properly); for transfers use `force_transfer`.
 - **`entity_set_hp(0)` vs `deal_damage`**: the former kills silently (no stats/kill log); use the latter when it should count.
+- **`deal_damage` is mitigated.** `ad`/`ap` are pre-mitigation, so a target with armor takes less than you passed. If you already did your own damage math, use `deal_damage_raw` — but then you also give up statistics and kill credit.
+- **A shield is not a buff.** `entity_add_shield` grants an absorb layer; putting shield numbers in a `BuffV1` does nothing.
+- **`entity` in `on_kill` / `on_damaged` / `on_assist` is your own champion**, not the other party. The killed entity arrives separately as `victim`.
+- **`on_attack` fires for skills too.** Use `on_base_attack`, or gate on `attack_type`, for auto-attack-only effects.
+- **Item indices are not stable across mod sets.** Resolve by key (`ctx.item_index("...")`) inside the item build hook.
+- **A new champion has no lane identity** until it accumulates match history — give it a `lane_prior` or the draft AI will treat every lane as equally plausible.
 - **Draw order is all about z.** Some screens use high z for the game's own UI; if your overlay is invisible, raise z (5000+).
 - **`Match*` record ids are per-category** (Normal #4 ≠ Practice #4). The server-side `Match` kind is one flat table.
 - **Where is the tick clock?** Everything time-like in the sim is ticks at 60/s. Client hooks get wall-clock `dt_micros` instead — do not mix the two.
