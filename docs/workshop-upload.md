@@ -73,6 +73,23 @@ mods/base_unpacked/text/ui.i18n
 
 Use `base_unpacked` as a read-only reference while building your own mod. Do not edit it as your mod source, because unpacking again will replace that folder.
 
+## Building Without Uploading
+
+To test a mod locally you do not need to publish anything. **Build Only (No Upload)** runs the same steps an upload runs — package checks, the native Rust DLL build when the mod has source, and staging the exact file set an upload would send — and stops before any Steam call. Steam does not even need to be running.
+
+1. Click **Browse** and choose your mod folder.
+2. Click **Build Only (No Upload)**.
+
+A built DLL lands inside the mod folder itself, so if the folder already lives under the game's `mods/` folder it is immediately playable — iterate with build-only until the mod is ready, then publish once. The log also prints the staged package folder, which holds exactly the files an upload would ship (useful for checking what gets included).
+
+The same thing is available from the command line:
+
+```text
+workshop-uploader build --path mods/my_mod
+```
+
+`--skip-build` skips the DLL build step, same as the upload command.
+
 ## Publishing a New Package
 
 1. Click **Browse** and choose your mod or database pack folder.
