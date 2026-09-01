@@ -289,6 +289,9 @@ Received by effect `apply`, passive/item callbacks, and match hooks. Player AI g
 | `entity_knockback(caster, target, speed, ticks)` | Knock `target` straight away from `caster` for `ticks` at `speed` (world units per tick). Respects `cc_immune` |
 | `entity_grab(caster, target, speed, ticks)` | Drag `target` toward `caster`; `ticks = 0` keeps pulling until it arrives. Respects `cc_immune` |
 | `entity_pull(caster, target, speed, ticks)` | Pull `target` toward `caster` for `ticks` at `speed`. Respects `cc_immune` |
+| `entity_stack_buff(target, &BuffV1, max_stacks, refresh) -> usize` | Grow a named-buff stack in one call: same-name buffs count as stacks. With `refresh` the existing stacks' remaining duration is rewritten to the new buff's, then one more copy is appended unless `max_stacks` (0 = unlimited) is reached. Returns the resulting stack count; unnamed buffs return 0 |
+
+`entity_stack_buff` replaces the read-remove-re-add loop stacking mods had to hand-roll; pair it with `entity_remove_buff` to clear a stack and `buff_count`/`buff_at` to read it back. For stacks that must survive death, keep the count in your passive/item object and re-apply it in `on_spawn` — passive objects live on the player and persist across respawns, which is how the base game's own stacking champions work.
 
 The displacement trio (`entity_knockback` / `entity_grab` / `entity_pull`) is **caster-relative** — the direction comes from the two entities' positions, so there is no direction argument. For displacement in an explicit direction, `apply_cc` with `CcKindV1::ForceMove` and `dx`/`dy` remains the tool.
 

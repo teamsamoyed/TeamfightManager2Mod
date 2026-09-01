@@ -10,6 +10,7 @@ Start with [Data-Only Champions](../data-champion.md) for a small working exampl
 - [Actions](actions.md): `attack`, `skill`, `skill2`, and `ult` action schema.
 - [Effects](effects.md): every `effect.type` value and its JSON shape.
 - [Buffs and Stats](buffs-and-stats.md): `stat`, `growth`, `buff_state`, and buff duration schema.
+- [Passives](passives.md): named native passives (`passive`, `passive_skill2`, `passive_ult`) and the stack counter.
 - [Visual Bindings](visual-bindings.md): `view_effects`, `view_projectiles`, `view_buffs`, and how names connect to effects.
 - [Enums](enums.md): accepted enum strings and externally-tagged enum objects.
 - [Patchable Fields](patchable-fields.md): fields that can be adjusted by patch/balance systems.

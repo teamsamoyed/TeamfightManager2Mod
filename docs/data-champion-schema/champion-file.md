@@ -60,6 +60,10 @@ A data champion is a JSON file with the `.data_champion` extension. The asset lo
 | `view_effects` | `DataViewEffectDef[]` | no | `[]` | Registers named effect visuals. |
 | `view_projectiles` | `DataViewProjectileDef[]` | no | `[]` | Registers named projectile visuals. |
 | `view_buffs` | `DataViewBuffDef[]` | no | `[]` | Registers named buff visuals. |
+| `passive` | `DataPassiveDef` | no | none | Attaches a named native passive from spawn — see [Passives](passives.md). |
+| `passive_skill2` | `DataPassiveDef` | no | none | Passive that activates once skill2 is learned. |
+| `passive_ult` | `DataPassiveDef` | no | none | Passive that activates once the ultimate is learned. |
+| `stack_skill_index` | number | no | none | Which skill icon (0 = skill, 1 = skill2, 2 = ult) shows the stack counter in match UI. |
 
 ## Skill Icons
 

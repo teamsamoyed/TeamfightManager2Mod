@@ -13,7 +13,9 @@ If this is your first mod, start with a data-only champion. You can make one wit
 These are the easiest mods to build and share.
 
 - Add champions with `.data_champion` files.
+- Add items with `.data_item` files — stat items and borrowed native behaviors, no code needed.
 - Rework existing champions by reusing their base champion id in a `.data_champion` file.
+- Attach built-in champion passives (ogre/dancer-style stacks) to data champions by name.
 - Add custom icons, sprites, UI layouts, and text.
 - Merge new translations into the game's text files.
 - Override existing assets such as sprites or JSON data.
@@ -49,6 +51,7 @@ New native mods should use the stable mod API: build once with any Rust toolchai
 - [Mod Package Structure](docs/mod-package.md)
 - [Data-Only Champions](docs/data-champion.md)
 - [Data Champion Schema](docs/data-champion-schema/index.md)
+- [Data-Only Items](docs/data-items.md)
 - [Override Existing Champions](docs/override-existing-champions.md)
 - [Assets and Sprite Sheets](docs/assets-and-sprite-sheets.md)
 - [Asset Overrides and i18n](docs/asset-overrides-and-i18n.md)

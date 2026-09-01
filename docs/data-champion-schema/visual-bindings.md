@@ -134,3 +134,22 @@ Projectile names work the same way:
   ]
 }
 ```
+## Standalone View Bindings (`.view_effects` files)
+
+The same three arrays can ship in a standalone `.view_effects` JSON file — no champion definition required:
+
+```text
+mods/my_mod/view/effects.view_effects
+```
+
+```json
+{
+  "view_effects": [
+    { "type": "Animation", "name": "my_mod_burst", "anim": "asset/my_mod/effects/burst", "tag": "burst", "z": 1, "is_follow": true }
+  ],
+  "view_projectiles": [],
+  "view_buffs": []
+}
+```
+
+All three sections are optional. Use this when the visuals do not belong to a data champion: a native champion or item playing custom effects through the stable API's `play_view_effect` / `queue_effect`, or a data item's flair. Names registered here work everywhere named visuals are looked up — live matches and replays alike. On a name collision the later registration wins (standalone files load after data champions), which also lets a visuals-only mod reskin an effect name on purpose.

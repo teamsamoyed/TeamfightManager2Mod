@@ -194,6 +194,8 @@ The example below defines a ranged magic champion with a basic attack, two skill
 - `skill_icon`: Optional shared icon sheet definition. Use this when skill, skill2, and ult icons are packed into one sheet with tags.
 - `skill_icons`: Optional list of three direct icon asset paths for skill, skill2, and ult. Use this when each icon is its own PNG.
 - `view_effects`, `view_projectiles`, `view_buffs`: Optional view bindings.
+- `passive`, `passive_skill2`, `passive_ult`: Optional named native passives (ogre/dancer-style stacks included) — see [Passives](data-champion-schema/passives.md).
+- `stack_skill_index`: Optional skill icon index that shows the stack counter.
 
 ## Action Fields
 
