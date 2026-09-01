@@ -239,6 +239,7 @@ Received by effect `apply`, passive/item callbacks, and match hooks. Player AI g
 | `tower_count()` / `tower_id_at(i) -> usize` | Tower entity ids |
 | `kill_log_count()` / `kill_log_at(i) -> Option<KillLogV1>` | Kill log |
 | `projectile_count()` / `projectile_at(i) -> Option<ProjectileInfoV1>` | Live projectiles (position, caster, team) |
+| `sim_origin() -> Option<SimOriginV1>` | Where this simulation is running — the match on screen, a replay, a spectate, server pre-simulation, or a tool — with the match / replay / set ids (`u64::MAX` = not applicable). Use it to skip presentation-only work in background pre-sims |
 
 ### 4-2. Entity view (`StableEntity`) — via `get_entity(id)`, `entity_at(index)`, `entity_count()`, or `entity(EntityHandleV1)`
 
@@ -282,6 +283,14 @@ Received by effect `apply`, passive/item callbacks, and match hooks. Player AI g
 | `entity_clear_shield(id) -> usize` **0.5.4+** | Drop every shield layer (returns count) |
 | `entity_remove_buff(id, name) -> usize` | Remove every buff with that name (returns count) |
 | `entity_clear_cc(id) -> usize` | Clear all crowd control (returns count) |
+| `deal_damage_typed(attacker, target, amount, DamageTypeV1, AttackTypeV1)` | One damage amount with an explicit type. `DamageTypeV1::Fixed` is **true damage**: no mitigation, but unlike `deal_damage_raw` it still records statistics, awards kill/assist credit and procs items |
+| `entity_set_invisible(id, ticks)` | Hide the entity for `ticks` — enemies lose vision of it and cannot target it |
+| `entity_banish(caster, target, ticks, lock_effect_name, end_effect_name)` | Banish: untargetable + invisible + input-locked for `ticks` — the same composite the `.data_champion` `Banish` effect applies. The two names play view effects during and at the end; empty strings skip the visuals. Respects `cc_immune` |
+| `entity_knockback(caster, target, speed, ticks)` | Knock `target` straight away from `caster` for `ticks` at `speed` (world units per tick). Respects `cc_immune` |
+| `entity_grab(caster, target, speed, ticks)` | Drag `target` toward `caster`; `ticks = 0` keeps pulling until it arrives. Respects `cc_immune` |
+| `entity_pull(caster, target, speed, ticks)` | Pull `target` toward `caster` for `ticks` at `speed`. Respects `cc_immune` |
+
+The displacement trio (`entity_knockback` / `entity_grab` / `entity_pull`) is **caster-relative** — the direction comes from the two entities' positions, so there is no direction argument. For displacement in an explicit direction, `apply_cc` with `CcKindV1::ForceMove` and `dx`/`dy` remains the tool.
 
 `deal_damage` is what you want in almost every case: it applies resistances and crit, records damage-dealt and damage-taken statistics, awards **kill and assist credit**, procs the target's and attacker's items and buffs, applies lifesteal and reflect, and shows the damage number in the match view. A shield is not a buff — it is a separate absorb layer, so grant it with `entity_add_shield`, not `add_buff`.
 
@@ -338,6 +347,15 @@ Mod actions produce the same floating numbers the game's own actions do, with no
 | `entity_set_hp` / `entity_set_base_stat` | Nothing, by design — these are silent state writes |
 
 The numbers only exist while a match is actually being watched. A skipped or briefly-simulated match records no frame, so the calls still apply but draw nothing.
+
+### 4-9. Match-view VFX & SFX
+
+| Method | Description |
+|---|---|
+| `play_view_effect(name, caster_id, &InputTargetV1, range, radius, time_ticks)` | Play a named view effect at an entity or position inside the match. It goes through the same frame-event pipeline the game's own `.data_champion` `ViewEffect`s use, so it renders in live matches **and replays** alike |
+| `play_sfx(name, caster_id, &InputTargetV1)` | Play a named sound at an entity or position inside the match |
+
+Same visibility rule as the floating numbers above: they show only while a frame is being recorded — a background pre-sim applies them silently. The effect name must be a view-effect binding the client knows (the same names `.data_champion` `ViewEffect` entries use); an unknown name draws nothing rather than failing.
 
 ---
 
@@ -441,6 +459,8 @@ Paths are dot-separated selectors. The tree hangs off `"body"`; explore the real
 | `ui_spawn_source(parent, ".ui source text")` | **Spawn from `.ui` syntax in a string** — every registered runner kind works |
 | `ui_set_properties(path, "key: value; ...")` | Apply `.ui` property lines in bulk (layout, visible, disable, runner-specific settings) |
 | `ui_set_state_json(path, json)` | Write runtime state — unknown keys/wrong types are atomically rejected |
+| `ui_set_team_logo(path, logo)` | Fill an image node with a team logo by its logo key, through the game's own logo pipeline (custom uploads included) |
+| `ui_set_champion_icon(path, champion, w, h, scale)` | Fill an image node with a champion's face icon using the game's own icon math; sizes the node's layout to the fitted `w`×`h` box at sprite `scale` (the game itself mostly passes `2.0`) |
 | `ui_remove_node(path)` | Delete a subtree |
 
 **`.ui` syntax** (shared by `ui_spawn_source`, `ui_set_properties`, and `.ui` asset files):
@@ -465,7 +485,7 @@ my_popup:color {              // "id:runner_kind"
 
 | Runner | Read | Write | Sugar |
 |---|---|---|---|
-| label | `{"text"}` | — (use set_text) | `ui_text` / `ui_set_text` |
+| label | `{"text"}` | `{"text": string}` | `ui_text` / `ui_set_text` |
 | checkbox | `{"selected", "text"}` | `{"selected": bool}` | `ui_checkbox_selected` / `ui_set_checkbox_selected` |
 | text_edit | `{"text", "is_editing"}` | `{"text": string}` | `ui_text_edit_text` / `ui_set_text_edit_text` |
 | slider | `{"ratio"}` | `{"ratio": number}` | `ui_slider_ratio` / `ui_set_slider_ratio` |
@@ -561,12 +581,15 @@ Key names are the engine's key enum names: `"A"`–`"Z"`, `"F1"`–`"F12"`, `"Ta
 | KnowledgeBase | Team scouting knowledge (keyed by team id) | ✅ | ✅ | |
 | YearSchedule | Season schedules (`year`, `recruits`, `schedules`) | ✅ | ✅ | `"year"` |
 | Match | **The server's whole match table** (no category split) | ❌ | ✅ | |
+| MatchReplay | Full recorded match replays (heavy documents) | ✅ | ❌ read-only — match history is authoritative | `"blue_team_win"`, `"blue_team"` |
 
 **Typed globals**: `game_time() -> (year, month, day, hour, minute)` / `game_date()`, `head_to_head(opponent_team) -> (wins, losses)` (all-time official), `competition_result(is_tournament, comp_id) -> (champion_team, runner_up_team)`, `schedule_get_json(path)` (season schedule array — paths like `"0.year"`).
 
 **Champion info**: `champion_names() -> Vec<String>` (selectable champions of the active, patched sheet), `champion_brief(name) -> Option<StableChampionBrief { name, category, tags, stat, growth }>`.
 
-**Current screen**: `client_scene_kind() -> Option<ClientSceneKindV1>` (Main, Lineup, StadiumEntrance, Match, MatchResult, LockerRoom, InGame, Prologue, PrologueFirst, TutorialMorgad, TutorialSerpen, Tutorial5v5), `client_main_tab() -> Option<String>` (tab name on the Main screen: "Home" / "Squad" / "Schedule" / "PlayerDetail" / …).
+**Native effect discovery**: `native_effect_names() -> Vec<String>` — every registered native effect, base game and loaded mods alike. These are exactly the names `StableSim::queue_effect` and a `.data_champion` `DataEffectDef::Native { effect_ref }` accept.
+
+**Current screen**: `client_scene_kind() -> Option<ClientSceneKindV1>` (Main, Lineup, StadiumEntrance, Match, MatchResult, LockerRoom, InGame, Prologue, PrologueFirst, TutorialMorgad, TutorialSerpen, Tutorial5v5, ChampionshipCelebration, AwardsCeremony), `client_main_tab() -> Option<String>` (tab name on the Main screen: "Home" / "Squad" / "Schedule" / "PlayerDetail" / …).
 
 **Settings reads**: `setting_get_json(SettingTargetV1::{GameSetting | ItemSetting}, path)` (+ `setting_get_i64` / `setting_get_string`).
 GameSetting path examples: `"kill_gold"`, `"start_gold"`, `"gold_per_second"`, `"respawn_tick"`, `"visible_distance"`, `"return_tick"`, `"melee_minion.stat.hp"`. **Writes** happen server-side (§7-3) or via asset overrides.
@@ -823,6 +846,9 @@ Constructors: `CcV1::stun(ticks)`, `CcV1::of_kind(CcKindV1, ticks)`.
 ### `ProjectileInfoV1`
 `x, y, caster_id, team, is_end`.
 
+### `SimOriginV1`
+`kind` (SimOriginKindV1 code), `match_id`, `replay_id`, `set_index` — ids are `u64::MAX` when not applicable (a practice match has no match id; only replays have a replay id).
+
 ### `UnitAttackV1` (spawned-unit attack profile; `Default` = a plain melee attack)
 `attack_ratio` (% of the unit's attack stat, 100 = 1×), `attack` (flat bonus), `range`, `cooltime`, `duration`, `start_timing`, `cancelable`, `attack_type` (code).
 
@@ -869,11 +895,12 @@ All enum codes are `u32` and append-only — treat unknown codes as "skip".
 | `AiDecisionKindV1` | Pass, Replace |
 | `GameModeKindV1` | Moba, SingleLane, DeathMatch |
 | `SettingTargetV1` | GameSetting, ItemSetting |
-| `RecordKindV1` | Team, Athlete, League, Tournament, Staff, MatchNormal, MatchPractice, MatchTutorial, MatchSoloRank, LeagueCompetition, TournamentCompetition, SoloRankMatch, KnowledgeBase, YearSchedule, Match |
+| `RecordKindV1` | Team, Athlete, League, Tournament, Staff, MatchNormal, MatchPractice, MatchTutorial, MatchSoloRank, LeagueCompetition, TournamentCompetition, SoloRankMatch, KnowledgeBase, YearSchedule, Match, MatchReplay |
 | `TextAlignXV1` / `TextAlignYV1` | Left, Center, Right / Top, Center, Bottom |
 | `ProjectileMoveKindV1` | Target, Linear |
 | `ManagementEventKindV1` | MatchFinished, TransferCompleted, SeasonRollover |
-| `ClientSceneKindV1` | Main, Lineup, StadiumEntrance, Match, MatchResult, LockerRoom, InGame, Prologue, PrologueFirst, TutorialMorgad, TutorialSerpen, Tutorial5v5 |
+| `SimOriginKindV1` | Unknown, ServerPresim, ClientMatchView, ClientSpectate, ClientReplay, Tool |
+| `ClientSceneKindV1` | Main, Lineup, StadiumEntrance, Match, MatchResult, LockerRoom, InGame, Prologue, PrologueFirst, TutorialMorgad, TutorialSerpen, Tutorial5v5, ChampionshipCelebration, AwardsCeremony |
 | `InputEventKindV1` | KeyPressed, KeyReleased |
 
 ---
@@ -915,6 +942,7 @@ All enum codes are `u32` and append-only — treat unknown codes as "skip".
 - **`on_attack` fires for skills too.** Use `on_base_attack`, or gate on `attack_type`, for auto-attack-only effects.
 - **Item indices are not stable across mod sets.** Resolve by key (`ctx.item_index("...")`) inside the item build hook.
 - **A new champion has no lane identity** until it accumulates match history — give it a `lane_prior` or the draft AI will treat every lane as equally plausible.
+- **`play_view_effect` / `play_sfx` show only in a watched match** — same rule as the floating numbers (§4-8). And the effect name must match a client view-effect binding; a typo silently draws nothing.
 - **Draw order is all about z.** Some screens use high z for the game's own UI; if your overlay is invisible, raise z (5000+).
 - **`Match*` record ids are per-category** (Normal #4 ≠ Practice #4). The server-side `Match` kind is one flat table.
 - **Where is the tick clock?** Everything time-like in the sim is ticks at 60/s. Client hooks get wall-clock `dt_micros` instead — do not mix the two.

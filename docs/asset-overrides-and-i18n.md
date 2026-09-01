@@ -41,8 +41,8 @@ The object key is the base asset you want to change. `remapping` points to your 
 
 Types:
 
-- `merge`: Merge JSON objects. This is best for i18n and small JSON additions.
-- `override`: Replace the whole target asset path with your asset.
+- `merge`: Deep-merge your JSON into the target — your keys overwrite, nested objects merge recursively, and merges from **multiple enabled mods stack** on the same target. JSON assets only; a non-JSON target cannot merge. Best for i18n and small JSON additions.
+- `override`: Replace the whole target asset path with your asset. When several enabled mods override the same target, the last one in the enabled order wins — overrides do not stack (use `merge` when mods should combine).
 
 If this file contains invalid JSON, the game disables the mod and shows the error in the diagnostics popup.
 

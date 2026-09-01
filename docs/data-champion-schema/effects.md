@@ -260,7 +260,7 @@ Temporarily removes/locks the target with optional visual effect names for the l
 }
 ```
 
-`lock_effect_name` and `end_effect_name` default to empty strings.
+`lock_effect_name` and `end_effect_name` default to empty strings — an empty name simply skips that visual; the banish itself still applies.
 
 ## Movement
 

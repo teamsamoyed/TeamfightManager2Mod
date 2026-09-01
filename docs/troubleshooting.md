@@ -61,6 +61,8 @@ Check:
 
 ## Aseprite Sprites Do Not Animate
 
+If the sprite is missing entirely (not just unanimated), check `log.log` first: a corrupt or unsupported `.ase` file is skipped at load time and logs an "aseprite(.ase) parse failed" warning with the reason.
+
 Check:
 
 - The `.aseprite` file has sprite user data with `"sheet_type": "Animation"` or `"sheet_type": "LayeredAnimation"`.
