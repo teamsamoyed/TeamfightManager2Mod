@@ -48,3 +48,13 @@ Durations are in simulation ticks (60 per second); ranges are world units. Copy 
 | `vampire` | none | Persists the vampire kit's stack counter across respawns. The stacks are added by the vampire kit itself, so on its own this does nothing visible. |
 
 More passives can be registered in later game versions without breaking existing files.
+
+## Mod-Registered Passives
+
+Native mods can add their own names to this registry with the stable API's `add_native_passive(name, passive)` — see the [Stable API Reference](../stable-api-reference.md). A data champion then references the mod's passive exactly like a built-in one:
+
+```json
+{ "passive": { "passive_ref": "my_mod:frenzy", "params": { "stacks": 5 } } }
+```
+
+The `params` object reaches the mod's passive instance as sorted-key JSON (`StablePassive::configure`), so one registered passive can serve many data champions with different numbers. If the registering mod is disabled, the reference degrades like an unknown name: one warning, no passive, the champion still loads.

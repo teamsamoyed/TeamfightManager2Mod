@@ -74,6 +74,7 @@ Contexts (`StableSim`, `StableClient`, …) and borrowed strings (`StrV1`) are v
 | `add_champion` | A champion; **reusing an existing id reworks that champion** | `StableChampion` |
 | `add_item` | An item with runtime callbacks | `StableItem` |
 | `add_native_effect(name, effect)` | A named effect — referenced by name from `.data_champion` files, `queue_effect`, and `spawn_projectile` | `StableEffectType` |
+| `add_native_passive(name, passive)` | A named passive — `.data_champion` files attach it via `"passive": { "passive_ref": name, "params": { ... } }` (also `passive_skill2` / `passive_ult`), so a data champion can run your custom passive without going full native. Prefix the name with your mod id (e.g. `"my_mod:frenzy"`) | `StablePassive` |
 | `set_extension` | Client lifecycle hooks (§6) | `StableExtension` |
 | `set_server_extension` | Management-server hooks (§7) | `StableServerExtension` |
 | `add_draft_score_hook` | Ban/pick scoring + full decision override (§8-1) | `StableDraftHook` |
@@ -188,6 +189,9 @@ In every hook, `entity` is **the passive owner's own champion**, never the other
 | `on_update(sim, rng_seed, player, entity)` | Every tick |
 | `on_base_attack(sim, rng_seed, player, entity)` **0.5.4+** | Basic attack cast |
 | `on_dead(sim, player)` **0.5.4+** | Death |
+| `configure(params_json: &str)` | Once on a fresh instance, before any hook — only for passives registered by name via `add_native_passive`. Carries the referencing `.data_champion`'s `params` as a JSON object with sorted keys and integer values (e.g. `{"cap":3,"stack_hp":7}`). Default implementation ignores it |
+
+A passive lives on the **player**, not the champion entity, and is re-applied through `on_spawn` on every respawn — state you keep in the struct (stack counts and the like) survives death. There are two ways to attach one: return it from `StableChampion::passive()` for your own native champion, or register it by name with `add_native_passive` so any `.data_champion` (yours or another mod's) can reference it — see [Passives](data-champion-schema/passives.md).
 
 ### 3-5. `StableItem`
 
@@ -331,6 +335,7 @@ sim.spawn_projectile("my_mod_fireball", "my_mod:burn", &ProjectileSpawnV1 {
 
 - `spawn_unit(name, summoner_id, team, x, y, duration_ticks, &StatV1, &UnitAttackV1) -> Option<entity_id>` — `summoner_id` receives kill credit. Use the returned id for later reads/mutation.
 - `spawn_projectile(name, effect_name, &ProjectileSpawnV1) -> bool` — circular hit shape; movement `Target` (homes onto `target_id`) or `Linear` (flies to `target_x/y`, `penetrate` keeps going through hits); `casting_target` filters what it can hit (default Enemy).
+  **`name` is the projectile's visual binding**: the match view resolves it against the registered projectile visuals, so bind your own sprite by registering that name under `view_projectiles` — in a `.data_champion`, or in a standalone [`.view_effects` file](data-champion-schema/visual-bindings.md#standalone-view-bindings-view_effects-files) when your mod has no data champion. An unregistered name still flies and hits, just without a visual. This is the projectile counterpart of `play_view_effect`: effects that should *follow a projectile* are expressed as the projectile's own visual, not as a separate attached effect.
 - `queue_effect(effect_name, attack_type, caster_id, &InputTargetV1, delay_ticks) -> bool` — false if the name is not registered. `delay_ticks` counts from now; `0` fires at the earliest drain, which is still inside the current tick unless it already ran. (Before 0.5.4 the delay was wrongly offset by the current tick.)
 - `strategy_get_json(team, path)` / `strategy_set_json(team, path, json)` — the team's live macro-strategy document. Fields (all enums): `focused` (pressured lane: `"Top"` / `"Bottom"` / `"All"`), `early_jungle`, `early_serpen`, `early_serpen_top`, `object_buildup`, `object_battle`, `morgard_use`, `tower_press`, `morgard_defense`, `object_finish`, `minion_wave`, `game_finish`.
 
