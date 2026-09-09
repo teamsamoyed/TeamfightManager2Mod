@@ -49,9 +49,9 @@ Durations are in simulation ticks (60 per second); ranges are world units. Copy 
 
 More passives can be registered in later game versions without breaking existing files.
 
-## Mod-Registered Passives
+## Mod-Registered Passives — 0.6.0 full release
 
-Native mods can add their own names to this registry with the stable API's `add_native_passive(name, passive)` — see the [Stable API Reference](../stable-api-reference.md). A data champion then references the mod's passive exactly like a built-in one:
+**Planned API — ships with the 0.6.0 full release** (not available in 0.5.x or the 0.6.0 beta). From that version on, native mods can add their own names to this registry with the stable API's `add_native_passive(name, passive)` — see the [Stable API Reference](../stable-api-reference.md). A data champion then references the mod's passive exactly like a built-in one:
 
 ```json
 { "passive": { "passive_ref": "my_mod:frenzy", "params": { "stacks": 5 } } }

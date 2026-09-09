@@ -74,7 +74,7 @@ Contexts (`StableSim`, `StableClient`, …) and borrowed strings (`StrV1`) are v
 | `add_champion` | A champion; **reusing an existing id reworks that champion** | `StableChampion` |
 | `add_item` | An item with runtime callbacks | `StableItem` |
 | `add_native_effect(name, effect)` | A named effect — referenced by name from `.data_champion` files, `queue_effect`, and `spawn_projectile` | `StableEffectType` |
-| `add_native_passive(name, passive)` | A named passive — `.data_champion` files attach it via `"passive": { "passive_ref": name, "params": { ... } }` (also `passive_skill2` / `passive_ult`), so a data champion can run your custom passive without going full native. Prefix the name with your mod id (e.g. `"my_mod:frenzy"`) | `StablePassive` |
+| `add_native_passive(name, passive)` **0.6.0 full release** (not in 0.5.x or the 0.6.0 beta) | A named passive — `.data_champion` files attach it via `"passive": { "passive_ref": name, "params": { ... } }` (also `passive_skill2` / `passive_ult`), so a data champion can run your custom passive without going full native. Prefix the name with your mod id (e.g. `"my_mod:frenzy"`) | `StablePassive` |
 | `set_extension` | Client lifecycle hooks (§6) | `StableExtension` |
 | `set_server_extension` | Management-server hooks (§7) | `StableServerExtension` |
 | `add_draft_score_hook` | Ban/pick scoring + full decision override (§8-1) | `StableDraftHook` |
@@ -189,9 +189,9 @@ In every hook, `entity` is **the passive owner's own champion**, never the other
 | `on_update(sim, rng_seed, player, entity)` | Every tick |
 | `on_base_attack(sim, rng_seed, player, entity)` **0.5.4+** | Basic attack cast |
 | `on_dead(sim, player)` **0.5.4+** | Death |
-| `configure(params_json: &str)` | Once on a fresh instance, before any hook — only for passives registered by name via `add_native_passive`. Carries the referencing `.data_champion`'s `params` as a JSON object with sorted keys and integer values (e.g. `{"cap":3,"stack_hp":7}`). Default implementation ignores it |
+| `configure(params_json: &str)` **0.6.0 full release** | Once on a fresh instance, before any hook — only for passives registered by name via `add_native_passive`. Carries the referencing `.data_champion`'s `params` as a JSON object with sorted keys and integer values (e.g. `{"cap":3,"stack_hp":7}`). Default implementation ignores it |
 
-A passive lives on the **player**, not the champion entity, and is re-applied through `on_spawn` on every respawn — state you keep in the struct (stack counts and the like) survives death. There are two ways to attach one: return it from `StableChampion::passive()` for your own native champion, or register it by name with `add_native_passive` so any `.data_champion` (yours or another mod's) can reference it — see [Passives](data-champion-schema/passives.md).
+A passive lives on the **player**, not the champion entity, and is re-applied through `on_spawn` on every respawn — state you keep in the struct (stack counts and the like) survives death. There are two ways to attach one: return it from `StableChampion::passive()` for your own native champion, or — from the **0.6.0 full release** — register it by name with `add_native_passive` so any `.data_champion` (yours or another mod's) can reference it — see [Passives](data-champion-schema/passives.md).
 
 ### 3-5. `StableItem`
 
