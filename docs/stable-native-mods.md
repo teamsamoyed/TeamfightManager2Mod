@@ -78,7 +78,7 @@ Everything goes through the `StableMod` builder in `init`:
 | `add_native_effect(name, ...)` | `StableEffectType` | Named effect referenced from `.data_champion` files via `DataEffectDef::Native` |
 | `set_extension(...)` | `StableExtension` | Client lifecycle hooks: title/game UI, save data, mod commands/events |
 | `set_server_extension(...)` | `StableServerExtension` | Authoritative server hooks: per-save data writes, client events |
-| `add_draft_score_hook(...)` | `StableDraftHook` | Adjust ban/pick scoring, or decide the exact ban/pick (candidate identities included) |
+| `add_draft_score_hook(...)` | `StableDraftHook` | Adjust ban/pick scoring, or decide the exact ban/pick and an AI team's lane assignment (candidate identities and both lineups included) |
 | `add_item_build_hook(...)` | `StableItemBuildHook` | Adjust or fully decide which final items the AI builds — the way to get your own items actually built |
 | `add_player_input_ai(...)` | `StablePlayerAi` | Replace final per-tick player inputs |
 | `set_map_customizer(...)` | `StableMapCustomizer` | Edit the freshly built match map (towers, camps, lanes, nexus, fountains, wall/bush grids) before every match |
@@ -86,7 +86,7 @@ Everything goes through the `StableMod` builder in `init`:
 
 During `init` you can also publish or consume runtime services shared between native mods with `host.register_service(...)` / `host.query_service(...)`.
 
-Inside gameplay callbacks you receive a `StableSim` context: entities, players, damage/heal/shield/buff/CC, typed damage (true damage that still earns statistics and kill credit), invisibility and banish, caster-relative knockback/grab/pull, match-view VFX/SFX playback, projectiles, kill log, debug drawing, direct mutation (HP/position/stats/gold, `force_end`), unit and projectile spawning, a delayed effect queue, the simulation's origin (live match / replay / pre-sim), and the live team-strategy document. Client extension hooks receive a `StableClient` context: scene kind (including NewGame options), full UI control, render-overlay drawing, audio, raw hotkeys, i18n, per-mod save data, mod commands/events, and management data reads (16 record kinds including match replays, champion info, native effect discovery, game clock, head-to-head, current screen). Server hooks receive a `StableServerCtx`: per-mod save namespace, client event emission, settings and record documents (read/write), news injection, management event subscription, and forced transfers. The [Stable API Reference](stable-api-reference.md) covers all of it method by method.
+Inside gameplay callbacks you receive a `StableSim` context: entities (including what kind of unit each one is), players, per-slot cooldowns and charges (read and reduce), damage/heal/shield/buff/CC, typed damage (true damage that still earns statistics and kill credit), invisibility and banish, caster-relative knockback/grab/pull, match-view VFX/SFX playback, projectiles, kill log, debug drawing, direct mutation (HP/position/stats/gold, `force_end`), unit and projectile spawning, a delayed effect queue, the simulation's origin (live match / replay / pre-sim), and the live team-strategy document. Client extension hooks receive a `StableClient` context: scene kind (including NewGame options), full UI control, render-overlay drawing, audio, raw hotkeys, i18n, per-mod save data, mod commands/events, and management data reads (16 record kinds including match replays, champion info, native effect discovery, game clock, head-to-head, current screen). Server hooks receive a `StableServerCtx`: per-mod save namespace, client event emission, settings and record documents (read/write), news injection, management event subscription, and forced transfers. The [Stable API Reference](stable-api-reference.md) covers all of it method by method.
 
 ### Full UI control
 
@@ -193,7 +193,7 @@ When it uploads, it reads your binaries and records the supported platforms in t
 
 The API grows by **appending**: new calls and callbacks are added, existing ones never change shape. So building against the newest SDK is always safe — your DLL still loads on older games, and a call into something the running game does not have simply returns `None` / `false` and does nothing. There is no migration step and nothing to guard.
 
-The reference marks each addition with the game version that introduced it, e.g. **`0.5.4+`** — see [Added in 0.5.4](stable-api-reference.md#added-in-054).
+The reference marks each addition with the game version that introduced it, e.g. **`0.5.4+`** or **`0.6.4+`** — see [Added in 0.6.4](stable-api-reference.md#added-in-064) and [Added in 0.5.4](stable-api-reference.md#added-in-054).
 
 If your mod would be *pointless* on an older game — it loads and then does nothing useful — say so, and players get an "update the game" diagnostic instead of an inert mod:
 
@@ -207,6 +207,7 @@ Use this sparingly. A mod that merely *prefers* newer features should stay on th
 |---|---|
 | (omitted) | any version with stable mod support |
 | `2` | 0.5.4 |
+| `10` | 0.6.4 |
 
 ## The Classic Path Is Going Away
 

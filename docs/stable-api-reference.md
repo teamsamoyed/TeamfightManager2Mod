@@ -11,7 +11,25 @@ Two rules make your DLL survive game updates:
 1. **Ignore unknown enum codes.** Wrappers surface codes newer than your build as `None` — skip them.
 2. **Write failure-tolerant code.** On an older game, calls into newer features fail gracefully (`None` / `false` / empty), never crash.
 
-Methods tagged **`0.5.4+`** were added in that game version. Calling one on an older game fails gracefully — nothing to guard, nothing to migrate. Your DLL keeps loading on older games either way, so it is always safe to build against the newest SDK.
+Methods tagged with a game version (**`0.5.4+`**, **`0.6.4+`**) were added in that version. Calling one on an older game fails gracefully — nothing to guard, nothing to migrate — and a newer callback is simply never called there. Your DLL keeps loading on older games either way, so it is always safe to build against the newest SDK.
+
+### Added in 0.6.4
+
+| Area | Addition |
+|---|---|
+| AI cast gates | `StableAction::can_activate` / `target_constraint` — the AI only tries an action, or aims it at a target, when you allow it (§3-2) |
+| Casting while moving | `StableAction::can_use_with_move_by` — decide per cast from the caster's state (§3-2) |
+| Dynamic range | `StableEffectType::may_adjust_range` / `range_adjust` — extra cast range per caster/target pair; every range check reads it, the AI's included (§3-3) |
+| Cooldowns | `entity.cooldown(slot)` — remaining cooldown, charges and time to the next charge (§4-2); `entity_reduce_cooldown` — cut one slot's cooldown by a fixed amount (§4-4) |
+| Unit kills | `StablePassive::on_unit_kill` — the owner took a minion or jungle-camp kill (§3-4); `entity.kind()` tells champions, minions, camps, epic monsters and summons apart (§4-2) |
+| Draft | `StableDraftHook::decide_positions` — decide an AI team's lane assignment after the picks; the draft context now carries both lineups' athlete ids and team ids (§8-1) |
+| Auto patch | `SettingTargetV1::AutoPatch` — the save's balance auto-patch settings, read/write on the server (§7-3) |
+| Replays | `MatchReplay` athletes now record `exp`, `cs`, `cs_jungle` and `self_heal` (§6-9) |
+
+Two fixes reach **already-built** modules:
+
+- **Passive hooks now feed the match view.** Passive hooks ran without the frame the match records into, so a projectile spawned from a `StablePassive` hook flew and hit but was never drawn, and the passive's heal and gold numbers never showed. Passives now get the frame, as item callbacks do.
+- A `cooltime_use_count` of `0` is now treated as `1` instead of crashing the match with a division by zero.
 
 ### Added in 0.5.4
 
@@ -129,10 +147,38 @@ fn effect(&self) -> Option<StableEffectSpec>;  // what actually happens
 fn cooltime_use_count(&self, caster_stat: &StatV1) -> usize;  // charges (default 1)
 fn can_use_with_move(&self) -> bool;     // castable while moving
 fn description(&self) -> String;         // tooltip (i18n key recommended)
+fn can_activate(&self, sim: &StableSim<'_>, caster: usize) -> bool;                     // 0.6.4+  AI cast gate (default true)
+fn target_constraint(&self, sim: &StableSim<'_>, caster: usize, target: usize) -> bool;  // 0.6.4+  per-target AI gate (default true)
+fn can_use_with_move_by(&self, caster: &StableEntityView<'_>) -> bool;                   // 0.6.4+  per cast; defaults to can_use_with_move()
 ```
 
 `StableEffectSpec { range, growth_range, start_timing, casting: CastingTypeV1, target: CastingTargetV1, attack_type: AttackTypeV1, effect: Box<dyn StableEffectType> }`
 — `range` in world units, `growth_range` per level, `start_timing` = tick offset inside the cast when the effect fires, `casting` = Targeting (unit) / Position (point) / Direction / None.
+
+**AI cast gates (0.6.4+).** `can_activate` is asked before the AI considers the action: return `false` and the AI does not try it right now — "ult only at 5 stacks", "only above 50% HP". `target_constraint` does the same per target — "execute only below 30% HP". Every AI skill decision reads both: fights, lane farming, movement dashes, jungle steals and support ults. They steer the AI only — an input your own `StablePlayerAi` returns still casts, so if the effect must never happen, check the condition in `apply` too. `sim` is read-only (mutating calls do nothing), and both must be deterministic.
+
+```rust
+fn can_activate(&self, sim: &StableSim<'_>, caster: usize) -> bool {
+    // Only with 5 "my_mod:charge" stacks on the caster.
+    sim.get_entity(caster).map_or(false, |e| {
+        (0..e.buff_count()).filter_map(|i| e.buff_at(i))
+            .filter(|b| b.name() == "my_mod:charge").count() >= 5
+    })
+}
+
+fn target_constraint(&self, sim: &StableSim<'_>, _caster: usize, target: usize) -> bool {
+    // Execute: only targets below 30% HP.
+    sim.get_entity(target).map_or(false, |t| { let (hp, max) = t.hp(); hp * 100 < max * 30 })
+}
+```
+
+**Casting while moving (0.6.4+).** `can_use_with_move_by` is asked each time the action starts, with a read-only view of the caster (`StableEntityView`, §3-3). Return `true` to let this cast — or basic attack — happen while moving, for example only while a buff is up:
+
+```rust
+fn can_use_with_move_by(&self, caster: &StableEntityView<'_>) -> bool {
+    caster.has_buff("my_mod:empowered")
+}
+```
 
 ### 3-3. `StableEffectType`
 
@@ -154,6 +200,18 @@ Reporting methods for the AI (all have defaults — the more accurately you repo
 | `expected_rush_effect() -> bool` | Is it a rush (dash that hits) |
 | `auto_target() / on_caster() / can_move() -> bool` | Auto-targeting / self-cast / cast while moving |
 | `linear_move_speed() -> Option<usize>` | Linear travel speed |
+
+**Dynamic range (0.6.4+).** `range_adjust(caster, target) -> u64` adds cast range for one caster/target pair, on top of `range + growth_range × (level − 1)` — a longer reach while the caster is empowered, say. Every range check reads it, the AI's included. Also return `true` from `may_adjust_range()`: the engine skips `range_adjust` for effects that report `false`. The adjustment can only add range.
+
+```rust
+fn may_adjust_range(&self) -> bool { true }
+
+fn range_adjust(&self, caster: &StableEntityView<'_>, _target: &StableEntityView<'_>) -> u64 {
+    if caster.has_buff("my_mod:empowered") { 20_000 } else { 0 }
+}
+```
+
+`StableEntityView` (0.6.4+) is a read-only view of one entity for these engine queries, which run without a `StableSim`: `id`, `team`, `level`, `kind`, `hp`, `stat`, `pos`, `shield`, `buff_count` / `buff_at`, `has_buff(name)`, `cc_count` / `cc_at`. It is valid only inside that call.
 
 Example — targeted damage + stun + slow:
 
@@ -184,14 +242,26 @@ In every hook, `entity` is **the passive owner's own champion**, never the other
 | `on_spawn(sim, player, entity)` | Spawn / respawn |
 | `on_attack(sim, player, entity, target, damage: &mut usize)` | Basic attack hit — mutate `damage` |
 | `on_damaged(sim, player, entity, attacker, damage)` | After taking damage |
-| `on_kill(sim, player, entity, victim)` | Kill — `victim` is what died (`victim` is 0.5.4+) |
+| `on_kill(sim, player, entity, victim)` | Champion kill — `victim` is the champion that died (`victim` is 0.5.4+). Minion and jungle kills go to `on_unit_kill` |
 | `on_assist(sim, player, entity)` **0.5.4+** | Assist |
 | `on_update(sim, rng_seed, player, entity)` | Every tick |
 | `on_base_attack(sim, rng_seed, player, entity)` **0.5.4+** | Basic attack cast |
 | `on_dead(sim, player)` **0.5.4+** | Death |
+| `on_unit_kill(sim, player, entity, victim)` **0.6.4+** | The owner took a minion or jungle-camp kill (the player credited with the CS). `victim` is still readable, so tell camps from minions with its `kind()`. Epic monsters and the Serpen reward the whole team and do not fire it |
 | `configure(params_json: &str)` **0.6.0 full release** | Once on a fresh instance, before any hook — only for passives registered by name via `add_native_passive`. Carries the referencing `.data_champion`'s `params` as a JSON object with sorted keys and integer values (e.g. `{"cap":3,"stack_hp":7}`). Default implementation ignores it |
 
 A passive lives on the **player**, not the champion entity, and is re-applied through `on_spawn` on every respawn — state you keep in the struct (stack counts and the like) survives death. There are two ways to attach one: return it from `StableChampion::passive()` for your own native champion, or — from the **0.6.0 full release** — register it by name with `add_native_passive` so any `.data_champion` (yours or another mod's) can reference it — see [Passives](data-champion-schema/passives.md).
+
+```rust
+// 0.6.4+  Red-buff style: a jungle-camp kill grants +20 attack for 60 seconds.
+fn on_unit_kill(&mut self, sim: &mut StableSim<'_>, _player: usize, entity: usize, victim: usize) {
+    if sim.get_entity(victim).and_then(|v| v.kind()) == Some(EntityKindV1::Jungle) {
+        let mut buff = BuffV1::timed("my_mod:camp_buff", 3600);   // 3600 ticks = 60s
+        buff.attack = 20;
+        sim.add_buff(entity, &buff);
+    }
+}
+```
 
 ### 3-5. `StableItem`
 
@@ -227,7 +297,7 @@ fn on_upgraded_from(&mut self, _prev_key: &str, carry: u64) { self.stacks = carr
 
 ## 4. Simulation context (`StableSim`)
 
-Received by effect `apply`, passive/item callbacks, and match hooks. Player AI gets a **read-only** view via `ctx.sim()` (mutating calls are inert there).
+Received by effect `apply`, passive/item callbacks, and match hooks. Player AI gets a **read-only** view via `ctx.sim()` (mutating calls are inert there), and so do the AI cast gates `can_activate` / `target_constraint` (0.6.4+).
 
 ### 4-1. Game state reads
 
@@ -260,6 +330,8 @@ Received by effect `apply`, passive/item callbacks, and match hooks. Player AI g
 | `attack_interval()` **0.5.4+** | Ticks between basic attacks, **after** attack-speed buffs — the effective attack speed |
 | `attack_speed_mult()` **0.5.4+** | Attack-speed multiplier in percent (100 = unbuffed) |
 | `is_alive / is_champion / is_tower / is_minion / is_targetable() -> bool` | Kind & state checks |
+| `kind() -> Option<EntityKindV1>` **0.6.4+** | Champion, Minion, Jungle (camp monster), Epic, Serpen, Tower, Nexus, or Summon (summoned units, including `spawn_unit`'s) |
+| `cooldown(SkillSlotV1) -> Option<CooldownV1>` **0.6.4+** | One action slot's cooldown and charges — see `CooldownV1` (§10). Champions only |
 | `buff_count()` / `buff_at(i) -> Option<BuffV1>` | Active buffs |
 | `cc_count()` / `cc_at(i) -> Option<CcV1>` | Active crowd control |
 
@@ -271,7 +343,7 @@ Received by effect `apply`, passive/item callbacks, and match hooks. Player AI g
 | `champion() -> Option<StableEntity>` | The controlled champion entity |
 | `level()`, `gold()`, `is_alive()`, `respawn_time()` | State |
 | `kills() / deaths() / assists() / cs()` | This match's KDA / CS |
-| `cooldowns() -> Option<(usize, usize, usize, usize)>` | Remaining ticks: (attack, skill, skill2, ult) |
+| `cooldowns() -> Option<(usize, usize, usize, usize)>` | Remaining ticks: (attack, skill, skill2, ult). For charges and the full cycle, use `champion()?.cooldown(slot)` (0.6.4+) |
 | `item_count()` / `item_keys() -> Vec<String>` | Owned item keys |
 | `statistics_json(path) -> Option<String>` | Cumulative statistics document. Fields: `level, solo_kill, solo_killed, rating, exp, cs, cs_jungle, gold, kill, death, assist, kill_bounty` |
 
@@ -294,6 +366,7 @@ Received by effect `apply`, passive/item callbacks, and match hooks. Player AI g
 | `entity_grab(caster, target, speed, ticks)` | Drag `target` toward `caster`; `ticks = 0` keeps pulling until it arrives. Respects `cc_immune` |
 | `entity_pull(caster, target, speed, ticks)` | Pull `target` toward `caster` for `ticks` at `speed`. Respects `cc_immune` |
 | `entity_stack_buff(target, &BuffV1, max_stacks, refresh) -> usize` | Grow a named-buff stack in one call: same-name buffs count as stacks. With `refresh` the existing stacks' remaining duration is rewritten to the new buff's, then one more copy is appended unless `max_stacks` (0 = unlimited) is reached. Returns the resulting stack count; unnamed buffs return 0 |
+| `entity_reduce_cooldown(id, SkillSlotV1, ticks) -> bool` **0.6.4+** | Take `ticks` off one slot's remaining cooldown, floored at ready — "casting Q cuts W by 60 ticks", "taking a hit cuts the ult by a second". Only that slot changes; with charges, the freed time refills charges the way natural cooldown does. `false` for non-champions |
 
 `entity_stack_buff` replaces the read-remove-re-add loop stacking mods had to hand-roll; pair it with `entity_remove_buff` to clear a stack and `buff_count`/`buff_at` to read it back. For stacks that must survive death, keep the count in your passive/item object and re-apply it in `on_spawn` — passive objects live on the player and persist across respawns, which is how the base game's own stacking champions work.
 
@@ -589,7 +662,9 @@ Key names are the engine's key enum names: `"A"`–`"Z"`, `"F1"`–`"F12"`, `"Ta
 | KnowledgeBase | Team scouting knowledge (keyed by team id) | ✅ | ✅ | |
 | YearSchedule | Season schedules (`year`, `recruits`, `schedules`) | ✅ | ✅ | `"year"` |
 | Match | **The server's whole match table** (no category split) | ❌ | ✅ | |
-| MatchReplay | Full recorded match replays (heavy documents) | ✅ | ❌ read-only — match history is authoritative | `"blue_team_win"`, `"blue_team"` |
+| MatchReplay | Full recorded match replays (heavy documents) | ✅ | ❌ read-only — match history is authoritative | `"blue_team_win"`, `"blue_team"`, `"blue_team.0.cs"` |
+
+**Replay athletes (0.6.4+)**: every entry of `blue_team` / `red_team` also carries that match's raw `exp`, `cs`, `cs_jungle` and `self_heal`. The result screen's CS is `cs + cs_jungle`. Replays recorded before 0.6.4 read `0`.
 
 **Typed globals**: `game_time() -> (year, month, day, hour, minute)` / `game_date()`, `head_to_head(opponent_team) -> (wins, losses)` (all-time official), `competition_result(is_tournament, comp_id) -> (champion_team, runner_up_team)`, `schedule_get_json(path)` (season schedule array — paths like `"0.year"`).
 
@@ -599,7 +674,7 @@ Key names are the engine's key enum names: `"A"`–`"Z"`, `"F1"`–`"F12"`, `"Ta
 
 **Current screen**: `client_scene_kind() -> Option<ClientSceneKindV1>` (Main, Lineup, StadiumEntrance, Match, MatchResult, LockerRoom, InGame, Prologue, PrologueFirst, TutorialMorgad, TutorialSerpen, Tutorial5v5, ChampionshipCelebration, AwardsCeremony), `client_main_tab() -> Option<String>` (tab name on the Main screen: "Home" / "Squad" / "Schedule" / "PlayerDetail" / …).
 
-**Settings reads**: `setting_get_json(SettingTargetV1::{GameSetting | ItemSetting}, path)` (+ `setting_get_i64` / `setting_get_string`).
+**Settings reads**: `setting_get_json(SettingTargetV1::{GameSetting | ItemSetting}, path)` (+ `setting_get_i64` / `setting_get_string`). `AutoPatch` is server-only (§7-3).
 GameSetting path examples: `"kill_gold"`, `"start_gold"`, `"gold_per_second"`, `"respawn_tick"`, `"visible_distance"`, `"return_tick"`, `"melee_minion.stat.hp"`. **Writes** happen server-side (§7-3) or via asset overrides.
 
 ---
@@ -637,7 +712,16 @@ for ev in ctx.take_events() { if ev.event == "note_saved" { /* ... */ } }
 
 ### 7-3. Settings documents (apply to later matches)
 
-`setting_get_json(target, path)` / `setting_set_json(target, path, json)` plus sugar `setting_get / setting_set` for `i64`, `f64`, `bool`, `string`. Targets: `GameSetting`, `ItemSetting`. Atomic reject on violation.
+`setting_get_json(target, path)` / `setting_set_json(target, path, json)` plus sugar `setting_get / setting_set` for `i64`, `f64`, `bool`, `string`. Targets: `GameSetting`, `ItemSetting`, `AutoPatch` (0.6.4+). Atomic reject on violation.
+
+**`AutoPatch` (0.6.4+)** is the save's balance auto-patch configuration — the same numbers the database editor's auto-patch settings edit. It lives in the save, so only the server can read it (the client read returns `None`). A write applies from the next generated patch; an all-zero document counts as unset and falls back to the defaults, as in the editor.
+
+| Fields | Meaning |
+|---|---|
+| `{major\|minor}_{weak\|normal\|strong}_{nerf\|buff}_count` | How many champions a patch nerfs / buffs, by patch size and the save's patch intensity |
+| `meta_stale_bonus_threshold` / `meta_stale_bonus_count`, `meta_stale_high_threshold` / `meta_stale_high_bonus_count` | Once this many champions have stayed in the meta for 3+ patches, add this many nerf and buff targets (two tiers) |
+| `unpicked_{major\|minor}_{min\|max}_count`, `unpicked_buff_repeat_count` | How many long-unpicked champions a patch buffs, and how many times that buff is applied |
+| `repeat_medium_streak_threshold` / `repeat_medium_count`, `repeat_high_streak_threshold` / `repeat_high_count` | A champion that stays meta or unpicked for this many patches in a row has its change applied this many times |
 
 ### 7-4. Record documents (authoritative writes)
 
@@ -707,26 +791,41 @@ fn score_ban / score_pick(&self, ctx: &StableDraftContext<'_>, candidate: usize,
     -> StableDraftDecision;  // Pass | Add(delta) | Replace(score)
 
 fn decide_ban / decide_pick(&self, ctx: &StableDraftContext<'_>) -> Option<usize>;  // full override
+
+fn decide_positions(&self, ctx: &StableDraftContext<'_>) -> Option<Vec<usize>>;  // 0.6.4+  lane assignment override
 ```
 
 - **score**: called per candidate; adjusts the built-in AI's score. Final selection still uses difficulty-based top-k randomness.
 - **decide**: return `Some(champion_id)` to **lock in that exact champion** — bypasses scoring and top-k randomness entirely. Ids outside the candidate pool (banned/taken/unavailable) are ignored and selection falls back to normal scoring. If several hooks decide, the last one wins.
+- **positions (0.6.4+)**: once an AI team's picks are in, it assigns them to lanes, and `ctx.phase()` is `Position`. Return one index into `ctx.ally_picks()` per lane slot of `ctx.slot_lanes()`, in slot order. A decision replaces the whole assignment, and anything but a complete permutation is ignored. If several hooks decide, the last one wins; `None` keeps the engine's assignment. Score hooks never see the `Position` phase.
 - Scores are `f32` (draft runs outside the deterministic sim zone).
 
 `StableDraftContext`:
 
 | Method | Description |
 |---|---|
-| `phase() -> Option<DraftPhaseV1>` (Ban / Pick), `difficulty()`, `is_explore()` | Phase info |
+| `phase() -> Option<DraftPhaseV1>` (Ban / Pick / Position 0.6.4+), `difficulty()`, `is_explore()` | Phase info |
 | `available_champions()`, `ally_bans() / enemy_bans()`, `ally_picks() / enemy_picks()` | Candidate/ban/pick id slices |
 | `champion_briefs() -> &[ChampionBriefV1]` | The identity array those ids index into |
 | `champion_name(id)`, `champion_category(id)`, `champion_tags(id)`, `champion_stat / champion_growth(id)` | Candidate identity |
+| `ally_athletes() / enemy_athletes() -> &[usize]` **0.6.4+** | Athlete ids of each lineup, in lane-slot order (empty when unknown). The hook has no record access itself — read the athletes you need through the record APIs (`RecordKindV1::Athlete`) in a server hook and keep them in your mod |
+| `ally_team() / enemy_team() -> Option<usize>` **0.6.4+** | Team ids |
+| `slot_lanes() -> Vec<LaneV1>` **0.6.4+** | The lane of each slot `decide_positions` fills (`Position` phase only) |
 
 ```rust
 // "If an assassin is still available, ban it first."
 fn decide_ban(&self, ctx: &StableDraftContext<'_>) -> Option<usize> {
     ctx.available_champions().iter().copied()
         .find(|&id| ctx.champion_category(id) == Some(ChampionCategoryV1::Assassin))
+}
+
+// 0.6.4+  "An AI team that picks my champion always plays it in the jungle."
+fn decide_positions(&self, ctx: &StableDraftContext<'_>) -> Option<Vec<usize>> {
+    let mine = ctx.ally_picks().iter().position(|&id| ctx.champion_name(id) == Some("my_mod_stalker"))?;
+    let jungle = ctx.slot_lanes().iter().position(|&lane| lane == LaneV1::Jungle)?;
+    let mut order: Vec<usize> = (0..ctx.ally_picks().len()).collect();   // everyone else in pick order
+    order.swap(mine, jungle);
+    Some(order)
 }
 ```
 
@@ -857,6 +956,9 @@ Constructors: `CcV1::stun(ticks)`, `CcV1::of_kind(CcKindV1, ticks)`.
 ### `SimOriginV1`
 `kind` (SimOriginKindV1 code), `match_id`, `replay_id`, `set_index` — ids are `u64::MAX` when not applicable (a practice match has no match id; only replays have a replay id).
 
+### `CooldownV1` (0.6.4+)
+`remaining` (ticks — the counter `cooldowns()` reports), `cooltime` (the full cycle after cooldown reduction), `max_charges`, `charges` (uses available now), `next_charge_ticks` (0 once every charge is ready), `unlocked` (`false` while the slot is level-locked — skill2 before level 3, ult before level 5 — or has no action). Charges follow the engine model: the full `cooltime` refills `max_charges` uses, and one use costs `cooltime / max_charges`.
+
 ### `UnitAttackV1` (spawned-unit attack profile; `Default` = a plain melee attack)
 `attack_ratio` (% of the unit's attack stat, 100 = 1×), `attack` (flat bonus), `range`, `cooltime`, `duration`, `start_timing`, `cancelable`, `attack_type` (code).
 
@@ -870,7 +972,7 @@ Constructors: `CcV1::stun(ticks)`, `CcV1::of_kind(CcKindV1, ticks)`.
 `x, y, z, rot, flip_x, flip_y, pivot_x, pivot_y, uv: (x, y, w, h normalized — (0,0,1,1) = whole texture), sample_nearest`.
 
 ### Wrapper-owned types
-`StableUiEvent { kind, path, payload_json }` · `StableModEvent { event, payload }` · `StableManagementEvent { seq, kind, payload_json }` · `StableChampionBrief { name, category, tags, stat, growth }` · `StableInputEvent { kind, key }` · `StableDraftDecision { Pass | Add(f32) | Replace(f32) }` (also used by the item build hook) · `StableEventTarget { Broadcast | Player(id) | Team(id) }` · `StableCommand` · `StableEffectSpec` · `StableItemBuildContext`.
+`StableUiEvent { kind, path, payload_json }` · `StableModEvent { event, payload }` · `StableManagementEvent { seq, kind, payload_json }` · `StableChampionBrief { name, category, tags, stat, growth }` · `StableInputEvent { kind, key }` · `StableDraftDecision { Pass | Add(f32) | Replace(f32) }` (also used by the item build hook) · `StableEventTarget { Broadcast | Player(id) | Team(id) }` · `StableCommand` · `StableEffectSpec` · `StableItemBuildContext` · `StableEntityView` (0.6.4+, §3-3).
 
 ---
 
@@ -897,12 +999,12 @@ All enum codes are `u32` and append-only — treat unknown codes as "skip".
 | `CommandResultV1` | Pass, Handled |
 | `SceneKindV1` | Loading, Title, NewGame, DatabaseEdit, InGame, GameTest, Room, Lobby |
 | `UiEventKindV1` | Click, RightClick, CheckboxSelect, TreeViewSelect, TreeViewRightClick, TreeViewMove, TextEditComplete, Remove, Custom, Changed |
-| `DraftPhaseV1` | Ban, Pick |
+| `DraftPhaseV1` | Ban, Pick, Position (0.6.4+) |
 | `DifficultyV1` | Easy, Normal, Hard |
 | `DraftDecisionKindV1` | Pass, Add, Replace |
 | `AiDecisionKindV1` | Pass, Replace |
 | `GameModeKindV1` | Moba, SingleLane, DeathMatch |
-| `SettingTargetV1` | GameSetting, ItemSetting |
+| `SettingTargetV1` | GameSetting, ItemSetting, AutoPatch (0.6.4+) |
 | `RecordKindV1` | Team, Athlete, League, Tournament, Staff, MatchNormal, MatchPractice, MatchTutorial, MatchSoloRank, LeagueCompetition, TournamentCompetition, SoloRankMatch, KnowledgeBase, YearSchedule, Match, MatchReplay |
 | `TextAlignXV1` / `TextAlignYV1` | Left, Center, Right / Top, Center, Bottom |
 | `ProjectileMoveKindV1` | Target, Linear |
@@ -910,6 +1012,8 @@ All enum codes are `u32` and append-only — treat unknown codes as "skip".
 | `SimOriginKindV1` | Unknown, ServerPresim, ClientMatchView, ClientSpectate, ClientReplay, Tool |
 | `ClientSceneKindV1` | Main, Lineup, StadiumEntrance, Match, MatchResult, LockerRoom, InGame, Prologue, PrologueFirst, TutorialMorgad, TutorialSerpen, Tutorial5v5, ChampionshipCelebration, AwardsCeremony |
 | `InputEventKindV1` | KeyPressed, KeyReleased |
+| `SkillSlotV1` (0.6.4+) | Attack, Skill, Skill2, Ult |
+| `EntityKindV1` (0.6.4+) | Champion, Minion, Jungle, Epic, Serpen, Tower, Nexus, Summon |
 
 ---
 
@@ -948,6 +1052,8 @@ All enum codes are `u32` and append-only — treat unknown codes as "skip".
 - **A shield is not a buff.** `entity_add_shield` grants an absorb layer; putting shield numbers in a `BuffV1` does nothing.
 - **`entity` in `on_kill` / `on_damaged` / `on_assist` is your own champion**, not the other party. The killed entity arrives separately as `victim`.
 - **`on_attack` fires for skills too.** Use `on_base_attack`, or gate on `attack_type`, for auto-attack-only effects.
+- **A passive's `on_kill` is for champions.** Minion and jungle kills arrive in `on_unit_kill` (0.6.4+); epic monsters and the Serpen fire neither.
+- **`can_activate` / `target_constraint` steer the AI, not the cast.** A `StablePlayerAi` input still casts the action — if the effect must never happen, check the condition in `apply` as well.
 - **Item indices are not stable across mod sets.** Resolve by key (`ctx.item_index("...")`) inside the item build hook.
 - **A new champion has no lane identity** until it accumulates match history — give it a `lane_prior` or the draft AI will treat every lane as equally plausible.
 - **`play_view_effect` / `play_sfx` show only in a watched match** — same rule as the floating numbers (§4-8). And the effect name must match a client view-effect binding; a typo silently draws nothing.
